@@ -4,6 +4,7 @@
 
 import sys
 import os
+import platform
 import pwd
 import pathlib
 import argparse
@@ -15,7 +16,7 @@ from datetime import datetime
 
 def get_arguments():
     """ Parse command line arguments """
-    
+
     parser = argparse.ArgumentParser(
         description="Submit a Singularity pipeline request to SLURM.",
     )
@@ -73,25 +74,33 @@ def get_arguments():
     )
     parser.add_argument(
         "--output-space", default="T1w",
-        help="The space for qsiprep output, should stay with T1w to match anat.",
+        help="Anatomical space for qsiprep output, should stay with T1w.",
     )
     parser.add_argument(
         "--template", default="MNI152NLin2009cAsym",
         help="The intended template for qsiprep",
     )
     parser.add_argument(
-        "--recon-spec", default="dsi_studio_gqi",
-        help="The processing pipeline for diffusion, after pre-processing is complete",
+        "--recon-spec", default=None,
+        help="The pipeline for diffusion, after pre-processing is complete",
     )
     parser.add_argument(
         "--hmc-model", default="eddy",
         help="The diffusion correction algorithm, 'eddy' or '3dSHORE'",
     )
     parser.add_argument(
+        "--num-cpus", default="4",
+        help="The number of processors to allocate for the pipeline.",
+    )
+    parser.add_argument(
+        "--memory-mb", default="24576",
+        help="The amount of memory to allocate for the pipeline.",
+    )
+    parser.add_argument(
         "--verbose", action="store_true",
         help="set to trigger verbose output",
     )
-    
+
     # Determine expected values for variables not provided or overridden
     if "--userid" not in sys.argv:
         sys.argv.append("--userid")
@@ -145,7 +154,7 @@ def get_arguments():
         "/tmp", "_".join([args.pipeline, args.timestamp, "staging", ])
     ))
     setattr(args, "templateflow_directory", os.path.join(
-        "/tmp", "_".join([args.pipeline, args.timestamp, "templateflow", ])
+        "/tmp", "templateflow"
     ))
     if getattr(args, "slurm_partition") is None:
         setattr(args, "slurm_partition", args.pipeline)
@@ -158,11 +167,16 @@ def get_singularity_image(args):
 
     sif_path = "/var/lib/singularity/images"
     sif_file = None
+    possibilities = []
 
     if args.pipeline_version is None:
         if args.verbose:
-            print("No version specified for {} pipeline.".format(args.pipeline))
-        possibilities = pathlib.Path(sif_path).glob("{}-*.sif".format(args.pipeline))
+            print("No version specified for {} pipeline.".format(
+                args.pipeline
+            ))
+        possibilities = list(pathlib.Path(sif_path).glob(
+            "{}-*.sif".format(args.pipeline)
+        ))
         if len(possibilities) < 0:
             print("No image exists for {} pipeline on {}.".format(
                 args.pipeline, platform.node()
@@ -191,7 +205,7 @@ def get_singularity_image(args):
 
 def context_is_valid(args):
     """ Ensure paths are OK and writable before bothering slurm queues. """
-    
+
     # Pipeline is available.
     setattr(args, "sif_file", get_singularity_image(args))
     sif_available = args.sif_file is not None
@@ -208,26 +222,23 @@ def context_is_valid(args):
     # Work directory is writable
     os.makedirs(args.work_directory, exist_ok=True)
     test_w_file = os.path.join(args.work_directory, "test.file")
-    with open(test_w_file, "w") as f:
-        f.write("Just a test, this file can be deleted.")
+    with open(test_w_file, "w") as test_file:
+        test_file.write("Just a test, this file can be deleted.")
     work_writable = os.path.exists(test_w_file)
     os.remove(test_w_file)
 
     # Staging directory is writable
     os.makedirs(args.staging_directory, exist_ok=True)
     test_s_file = os.path.join(args.staging_directory, "test.file")
-    with open(test_s_file, "w") as f:
-        f.write("Just a test, this file can be deleted.")
+    with open(test_s_file, "w") as test_file:
+        test_file.write("Just a test, this file can be deleted.")
     stage_writable = os.path.exists(test_s_file)
     os.remove(test_s_file)
 
-    print( "'context_is_valid' returning",
-        sif_available and
-        sub_available and
-        work_writable and
-        stage_writable
-    )
-    return sif_available and sub_available and work_writable and stage_writable
+    retval = (sif_available and sub_available and
+              work_writable and stage_writable)
+    print("'context_is_valid' returning {}".format(retval))
+    return retval
 
 
 def write_batch_script(args):
@@ -236,91 +247,116 @@ def write_batch_script(args):
     os.makedirs(os.path.join(args.home, "bin", "slurm"), exist_ok=True)
     script_name = "_".join([
         "batch", "sub-" + args.subject, args.pipeline, args.timestamp,
-    ]) + ".slurm"
-    batch_file = pathlib.Path(args.home, "bin", "slurm", script_name)
-    setattr(args, "job_name", "_".join([args.username, args.pipeline, args.subject, ]))
-    setattr(args, "log_name", "_".join([
-        "sub-" + args.subject,
-        "pipeline-" + args.pipeline,
-        "ts-" + args.timestamp,
-    ]))
-    with open(batch_file, "w") as f:
-        f.write("#!/bin/bash\n")
-        f.write("#SBATCH --job-name={}\n".format(args.job_name))
-        f.write("#SBATCH --partition={}\n".format(args.slurm_partition))
-        f.write("#SBATCH --output={}\n".format(
-            os.path.join(args.staging_directory, args.log_name + ".out")
+    ]) + ".sbatch"
+    batch_file_path = pathlib.Path(args.home, "bin", "slurm", script_name)
+    log_file_path = str(batch_file_path).replace(".sbatch", ".out")
+    with open(batch_file_path, "w") as batch_file:
+        batch_file.write("#!/bin/bash\n")
+        batch_file.write("#SBATCH --job-name={}\n".format(args.subject))
+        batch_file.write("#SBATCH --partition={}\n".format(args.slurm_partition))
+        batch_file.write("#SBATCH --output={}\n".format(log_file_path))
+        batch_file.write("#SBATCH --error={}\n".format(log_file_path))
+        batch_file.write("#SBATCH --time=0\n")
+        batch_file.write("#SBATCH --ntasks-per-node={}\n".format(args.num_cpus))
+        batch_file.write("#SBATCH --mem={}\n".format(args.memory_mb))
+        batch_file.write("#SBATCH --chdir=/tmp/\n")
+        batch_file.write("#SBATCH --export={}\n".format(
+            "SINGULARITYENV_TEMPLATEFLOW_HOME=/opt/templateflow"
         ))
-        f.write("#SBATCH --error={}\n".format(
-            os.path.join(args.staging_directory, args.log_name + ".err")
+        batch_file.write("\n")
+        batch_file.write("mkdir -p {}\n".format(args.work_directory))
+        batch_file.write("mkdir -p {}\n".format(args.templateflow_directory))
+        batch_file.write("mkdir -p {}\n".format(args.staging_directory))
+        batch_file.write("\n")
+        batch_file.write("singularity run --cleanenv \\\n")
+        batch_file.write("  -B {}:/data:ro \\\n".format(args.rawdata))
+        batch_file.write("  -B {}:/out \\\n".format(args.staging_directory))
+        batch_file.write("  -B {}:/work \\\n".format(args.work_directory))
+        batch_file.write("  -B {}:/opt/templateflow \\\n".format(
+            args.templateflow_directory
         ))
-        f.write("#SBATCH --time=0\n")
-        f.write("#SBATCH --mem=32768\n")
-        f.write("#SBATCH --chdir=/tmp/\n")
-        f.write("#SBATCH --export=TEMPLATEFLOW_HOME=/opt/templateflow\n")
-        # TODO: Ensure a unique timestamped work and staging directory.
-        # TODO: And remove anything in the way.
-        f.write("mkdir -p {}\n".format(args.work_directory))
-        f.write("mkdir -p {}\n".format(args.templateflow_directory))
-        f.write("mkdir -p {}\n".format(args.staging_directory))
-        f.write("singularity run --cleanenv \\\n")
-        f.write("  -B {}:/data:ro \\\n".format(args.rawdata))
-        f.write("  -B {}:/out \\\n".format(args.staging_directory))
-        f.write("  -B {}:/work \\\n".format(args.work_directory))
-        f.write("  -B {}:/opt/templateflow \\\n".format(args.templateflow_directory))
-        f.write("  -B {}:/opt/freesurfer/license.txt:ro \\\n".format(
+        batch_file.write("  -B {}:/opt/freesurfer/license.txt:ro \\\n".format(
             args.freesurfer_license
         ))
-        f.write("  {} \\\n".format(args.sif_file))
-        f.write("  /data /out participant \\\n")
-        f.write("  -w /work \\\n")
-        f.write("  --fs-license-file /opt/freesurfer/license.txt \\\n")
-        f.write("  --participant-label {} \\\n".format(args.subject))
+        batch_file.write("  {} \\\n".format(args.sif_file))
+        batch_file.write("  /data /out participant \\\n")
+        batch_file.write("  -w /work \\\n")
+        batch_file.write("  --fs-license-file /opt/freesurfer/license.txt \\\n")
+        batch_file.write("  --participant-label {} \\\n".format(args.subject))
         if args.pipeline == "qsiprep":
-            f.write("  --output-resolution {} \\\n".format(args.output_resolution))
-            f.write("  --hmc-model {} \\\n".format(args.hmc_model))
-            f.write("  --output-space T1w \\\n".format(args.output_space))
-            f.write("  --template {} \\\n".format(args.template))
-            f.write("  --recon-spec {} \\\n".format(args.recon_spec))
-        f.write("  --nthreads 16 --mem-mb 32768\n")
-        f.write("\n")
-        f.write("chown {}:{} --recursive {}\n".format(
+            batch_file.write("  --output-resolution {} \\\n".format(
+                args.output_resolution
+            ))
+            batch_file.write("  --hmc-model {} \\\n".format(args.hmc_model))
+            batch_file.write("  --output-space {} \\\n".format(args.output_space))
+            batch_file.write("  --template {} \\\n".format(args.template))
+            if (args.recon_spec is not None) and (args.recon_spec != "none"):
+                batch_file.write("  --recon-spec {} \\\n".format(args.recon_spec))
+        batch_file.write("  --nthreads {} --mem-mb {}\n".format(
+            int(args.num_cpus) * 2, args.memory_mb
+        ))
+        batch_file.write("\n")
+        batch_file.write("if [[ \"$?\" != \"0\" ]]; then\n")
+        batch_file.write("  echo \"Container run failed. Avoiding clean-up.\"\n")
+        batch_file.write("  echo \"$(hostname):{}\"\n".format(args.staging_directory))
+        batch_file.write("  exit $?\n")
+        batch_file.write("fi\n")
+        batch_file.write("\n")
+        batch_file.write("# Format and copy output to final destination.\n")
+        batch_file.write("chown {}:{} --recursive {}\n".format(
             args.username, args.userid, args.staging_directory
         ))
-        f.write("rsync -ah {}/{}/sub-{}* {}/{}/\n".format(
+        batch_file.write("rsync -ah {}/{}/sub-{}* {}/{}/\n".format(
             args.staging_directory, args.pipeline, args.subject,
             args.derivatives, args.pipeline
         ))
         if args.pipeline == "fmriprep":
-            f.write("if [[ ! -e {}/freesurfer/sub-{} ]]; then\n".format(
+            batch_file.write("if [[ ! -e {}/freesurfer/sub-{} ]]; then\n".format(
                 args.derivatives, args.subject,
             ))
-            f.write("  rsync -ah {}/freesurfer/sub-{}* {}/freesurfer/\n".format(
+            batch_file.write("  rsync -ah {}/freesurfer/sub-{}* {}/freesurfer/\n".format(
                 args.staging_directory, args.subject, args.derivatives,
             ))
-            f.write("else\n")
-            f.write("  echo \"Freesurfer output at {} was abandoned to avoid over-writing {}/freesurfer/sub-{}".format(
-                args.staging_directory, args.derivatives, args.subject,
+            batch_file.write("else\n")
+            batch_file.write("  echo \"Freesurfer output at {} was abandoned\"\n".format(
+                args.staging_directory,
             ))
-            f.write("fi\n")
+            batch_file.write("  echo \"to avoid over-writing {}/freesurfer/sub-{}\"\n".format(
+                args.derivatives, args.subject,
+            ))
+            batch_file.write("fi\n")
         elif args.pipeline == "qsiprep":
-            f.write("rsync -ah {}/qsirecon/sub-{}* {}/qsirecon/\n".format(
+            batch_file.write("rsync -ah {}/qsirecon/sub-{}* {}/qsirecon/\n".format(
                 args.staging_directory, args.subject, args.derivatives,
             ))
-        f.write("echo \"Job complete at $(date)\"")
+        batch_file.write("rm -rf {}\n".format(args.work_directory))
+        batch_file.write("# intentionally leaving templateflow dir\n")
+        batch_file.write("\n")
+        batch_file.write("echo \"Job complete at $(date)\"\n")
+        batch_file.write("\n")
+        batch_file.write("rsync -ah {}/*.{{err,out}} {}/logs/\n".format(
+            args.staging_directory, args.derivatives,
+        ))
+        batch_file.write("# rm -rf {}\n".format(args.staging_directory))
 
-    return batch_file
+    return batch_file_path
 
 
-def submit_batch_script(sbatch_file):
+def submit_batch_script(sbatch_file, verbose=False):
     """ Create the batch script to batch the pipeline execution. """
-    print("|==========---------- Batch file follows ----------==========|")
-    subprocess.run(["cat", sbatch_file, ])
-    print("|==========----------        end         ----------==========|")
+    if verbose:
+        print("|==========---------- Batch file follows ----------==========|")
+        subprocess.run(["cat", sbatch_file, ], check=True)
+        print("|==========----------        end         ----------==========|")
     print("Batch file was saved to {}".format(sbatch_file))
-    print("Submitting job at {}".format(datetime.now().strftime("%Y%m%d %H:%M:%S")))
-    subprocess.run(["sbatch", sbatch_file, ])
-
+    print("Submitting job at {}".format(
+        datetime.now().strftime("%Y%m%d %H:%M:%S")
+    ))
+    sbatch_submit_process = subprocess.run(
+        ["sbatch", sbatch_file, ], check=True,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    )
+    print(sbatch_submit_process.stdout.decode("utf-8"))
 
 
 def main(args):
@@ -335,9 +371,8 @@ def main(args):
 
     if context_is_valid(args):
         batch_script = write_batch_script(args)
-        submit_batch_script(batch_script)
+        submit_batch_script(batch_script, args.verbose)
 
 
 if __name__ == "__main__":
-    """ Parse arguments and pass them to main. """
     main(get_arguments())
