@@ -77,6 +77,10 @@ def get_arguments():
         help="Anatomical space for qsiprep output, should stay with T1w.",
     )
     parser.add_argument(
+        "--output-spaces", default=None,
+        help="Anatomical space for fmiprep output",
+    )
+    parser.add_argument(
         "--template", default="MNI152NLin2009cAsym",
         help="The intended template for qsiprep",
     )
@@ -142,6 +146,8 @@ def get_arguments():
                         ))
 
     # Generate final defaults, if they aren't provided.
+    # TODO: This is never used. Either write to a log file or delete it.
+    # TODO: Or, better, just use the .out file from slurm.
     if getattr(args, "log_file") is None:
         setattr(args, "log_file", os.path.join(
             args.home, "_".join([
@@ -288,9 +294,9 @@ def write_batch_script(args):
         batch_file.write("  --fs-license-file /opt/freesurfer/license.txt \\\n")
         batch_file.write("  --participant-label {} \\\n".format(args.subject))
         if args.pipeline == "fmriprep":
-            if args.template_resampling_grid is not None:
-                batch_file.write("  --template-resampling-grid {} \\\n".format(
-                    args.template_resampling_grid
+            if args.output_spaces is not None:
+                batch_file.write("  --output-spaces {} \\\n".format(
+                    args.output_spaces
                 ))
         elif args.pipeline == "qsiprep":
             batch_file.write("  --output-resolution {} \\\n".format(
