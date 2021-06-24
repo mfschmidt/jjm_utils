@@ -247,13 +247,12 @@ def write_batch_script(args):
     batch_file_path = pathlib.Path(args.home, "bin", "slurm", script_name)
     if args.log_file is None:
         setattr(args, "log_file", str(batch_file_path).replace(".sbatch", ".out"))
-    contained_log_file = os.path.join("/log", pathlib.Path(args.log_file).name)
     with open(batch_file_path, "w") as batch_file:
         batch_file.write("#!/bin/bash\n")
         batch_file.write("#SBATCH --job-name={}\n".format(args.subject))
         batch_file.write("#SBATCH --partition={}\n".format(args.slurm_partition))
-        batch_file.write("#SBATCH --output={}\n".format(contained_log_file))
-        batch_file.write("#SBATCH --error={}\n".format(contained_log_file))
+        batch_file.write("#SBATCH --output={}\n".format(args.log_file))
+        batch_file.write("#SBATCH --error={}\n".format(args.log_file))
         batch_file.write("#SBATCH --time=0\n")
         batch_file.write("#SBATCH --ntasks-per-node={}\n".format(args.num_cpus))
         batch_file.write("#SBATCH --mem={}\n".format(args.memory_mb))
