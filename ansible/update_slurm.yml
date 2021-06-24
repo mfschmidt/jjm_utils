@@ -1,0 +1,25 @@
+---
+- name: Update slurm nodes to match controller
+  hosts: nodes
+  remote_user: aa
+  become: yes
+  become_method: sudo
+  become_user: root
+  tasks:
+
+  - name: Copy slurm.conf file
+    copy:
+      src: /etc/slurm-llnl/slurm.conf
+      dest: /etc/slurm-llnl/slurm.conf
+      owner: slurm
+      group: slurm
+      mode: '0644'
+
+  - name: Copy cgroup.conf file
+    copy:
+      src: /etc/slurm-llnl/cgroup.conf
+      dest: /etc/slurm-llnl/cgroup.conf
+      owner: slurm
+      group: slurm
+      mode: '0644'
+

@@ -1,0 +1,50 @@
+---
+- name: Install docker-ce to cluster
+  hosts: cluster
+  remote_user: aa
+  become: yes
+  become_method: sudo
+  become_user: root
+  tasks:
+
+  - name: Add Docker GPG key
+    apt_key:
+      url: https://download.docker.com/linux/debian/gpg
+      state: present
+
+  - name: Install prerequisites
+    apt:
+      name: "{{ packages }}"
+      state: present
+      update_cache: yes
+    vars:
+      packages:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+        - gnupg2
+        - sshpass
+        - software-properties-common
+
+  - name: Add Docker APT repository
+    apt_repository:
+      repo: deb [arch=amd64] https://download.docker.com/linux/{{ansible_distribution|lower}} {{ansible_distribution_release}} stable
+      state: present
+      update_cache: yes
+
+  - name: Install docker-ce
+    apt:
+      update_cache: yes
+      name: "{{ packages }}"
+    vars:
+      packages:
+        - docker-ce
+        - docker-ce-cli
+        - containerd.io
+
+  - name: Install docker-compose
+    get_url:
+      url: "https://github.com/docker/compose/releases/download/1.24.1/docker-compose-{{ansible_system}}-{{ansible_architecture}}"
+      dest: /usr/local/bin/docker-compose
+      mode: +x
+

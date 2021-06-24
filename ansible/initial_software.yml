@@ -1,0 +1,38 @@
+---
+- name: Update and upgrade initial software packages
+  hosts: cluster
+  remote_user: aa
+  become: yes
+  become_method: sudo
+  become_user: root
+  tasks:
+
+  - name: Upgrade base packages
+    apt:
+      update_cache: yes
+      upgrade: full
+
+  - name: Install jjm standard packages
+    apt:
+      name: "{{ packages }}"
+      state: present
+    vars:
+      packages: 
+        - gnupg
+        - vim
+        - tree
+        - htop
+        - sshpass
+        - ansible
+        - whois
+        - nfs-kernel-server
+        - nfs-common
+        - python3-pip
+        - python3-distutils
+        - default-jre
+        - tmux
+        - reptyr
+        - git
+        - ca-certificates
+        - build-essential
+

@@ -1,0 +1,79 @@
+---
+- name: Open up local munge.key for copying
+  hosts: jjm7
+  become: yes
+  become_method: sudo
+  become_user: root
+  tasks:
+
+          - name: Open up munge dir
+            file:
+                    path: '/etc/munge'
+                    mode: '0777'
+          - name: Open up munge.key
+            file:
+                    path: '/etc/munge/munge.key'
+                    mode: '0666'
+
+- name: Open up remote munge keys for copying
+  hosts: nodes
+  remote_user: aa
+  become: yes
+  become_method: sudo
+  become_user: root
+  tasks:
+          - name: Open up munge dir
+            file:
+                    path: '/etc/munge'
+                    mode: '0777'
+          - name: Open up munge file
+            file:
+                    path: '/etc/munge/munge.key'
+                    state: absent
+
+- name: Update slurm nodes to match controller
+  hosts: nodes
+  remote_user: aa
+  become: yes
+  become_method: sudo
+  become_user: root
+  tasks:
+
+          - name: Copy munge key
+            copy:
+                    src: /etc/munge/munge.key
+                    dest: /etc/munge/munge.key
+                    owner: munge
+                    group: munge
+                    mode: '0400'
+
+- name: Lock up remote munge.key access
+  hosts: nodes
+  remote_user: aa
+  become: yes
+  become_method: sudo
+  become_user: root
+  tasks:
+
+          - name: Lock down munge dir
+            file:
+                    path: '/etc/munge'
+                    mode: '0700'
+
+- name: Close local munge.key access
+  hosts: jjm7
+  become: yes
+  become_method: sudo
+  become_user: root
+  tasks:
+
+          - name: Close down munge.key
+            file:
+                    path: '/etc/munge/munge.key'
+                    mode: '0400'
+
+          - name: Close down munge dir
+            file:
+                    path: '/etc/munge'
+                    mode: '0700'
+

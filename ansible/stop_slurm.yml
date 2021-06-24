@@ -1,0 +1,27 @@
+---
+- name: Stop the slurmd service on all nodes.
+  hosts: heads,nodes
+  remote_user: aa
+  become: yes
+  become_method: sudo
+  become_user: root
+  tasks:
+
+  - name: Stop slurmd service
+    service:
+      name: slurmd
+      state: stopped
+
+- name: Stop the slurmctld service on head nodes.
+  hosts: heads
+  remote_user: aa
+  become: yes
+  become_method: sudo
+  become_user: root
+  tasks:
+
+  - name: Stop slurmctld service
+    service:
+      name: slurmctld
+      state: stopped
+
