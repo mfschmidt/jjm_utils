@@ -85,10 +85,6 @@ def get_arguments():
         help="The intended template for qsiprep",
     )
     parser.add_argument(
-        "--template-resampling-grid", default=None,
-        help="The resampling grid for fmriprep",
-    )
-    parser.add_argument(
         "--recon-spec", default=None,
         help="The pipeline for diffusion, after pre-processing is complete",
     )
@@ -146,16 +142,6 @@ def get_arguments():
                         ))
 
     # Generate final defaults, if they aren't provided.
-    # TODO: This is never used. Either write to a log file or delete it.
-    # TODO: Or, better, just use the .out file from slurm.
-    if getattr(args, "log_file") is None:
-        setattr(args, "log_file", os.path.join(
-            args.home, "_".join([
-                "sub-" + args.subject,
-                "pipeline-" + args.pipeline,
-                "ts-" + args.timestamp,
-            ]) + ".log"
-        ))
     if getattr(args, "work_directory") is None:
         setattr(args, "work_directory", os.path.join(
             "/tmp", "_".join([args.pipeline, args.timestamp, "working", ])
@@ -277,6 +263,9 @@ def write_batch_script(args):
         batch_file.write("mkdir -p {}\n".format(args.work_directory))
         batch_file.write("mkdir -p {}\n".format(args.templateflow_directory))
         batch_file.write("mkdir -p {}\n".format(args.staging_directory))
+        batch_file.write("\n")
+        batch_file.write("env\n")
+        batch_file.write("ls -laR {}/export/\n".format(args.rawdata))
         batch_file.write("\n")
         batch_file.write("singularity run --cleanenv \\\n")
         batch_file.write("  -B {}:/data:ro \\\n".format(args.rawdata))
