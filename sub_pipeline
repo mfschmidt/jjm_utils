@@ -81,6 +81,10 @@ def get_arguments():
         help="The intended template for qsiprep",
     )
     parser.add_argument(
+        "--template-resampling-grid", default=None,
+        help="The resampling grid for fmriprep",
+    )
+    parser.add_argument(
         "--recon-spec", default=None,
         help="The pipeline for diffusion, after pre-processing is complete",
     )
@@ -283,7 +287,12 @@ def write_batch_script(args):
         batch_file.write("  -w /work \\\n")
         batch_file.write("  --fs-license-file /opt/freesurfer/license.txt \\\n")
         batch_file.write("  --participant-label {} \\\n".format(args.subject))
-        if args.pipeline == "qsiprep":
+        if args.pipeline == "fmriprep":
+            if args.template_resampling_grid is not None:
+                batch_file.write("  --template-resampling-grid {} \\\n".format(
+                    args.template_resampling_grid
+                ))
+        elif args.pipeline == "qsiprep":
             batch_file.write("  --output-resolution {} \\\n".format(
                 args.output_resolution
             ))
