@@ -264,9 +264,10 @@ def write_batch_script(args):
         batch_file.write("mkdir -p {}\n".format(args.work_directory))
         batch_file.write("mkdir -p {}\n".format(args.templateflow_directory))
         batch_file.write("mkdir -p {}\n".format(args.staging_directory))
-        batch_file.write("\n")
-        batch_file.write("env\n")
-        batch_file.write("ls -laR {}/export/\n".format(args.rawdata))
+        if args.verbose:
+            batch_file.write("\n")
+            batch_file.write("env\n")
+            batch_file.write("ls -laR {}/export/\n".format(args.rawdata))
         batch_file.write("\n")
         batch_file.write("singularity run --cleanenv \\\n")
         batch_file.write("  -B {}:/data:ro \\\n".format(args.rawdata))
