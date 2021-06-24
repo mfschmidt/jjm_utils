@@ -12,10 +12,10 @@ in `/var/lib/singularity/images/`.
 ### Setup
 
 Download a local config file template and customize it. Following this command,
-edit as you see fit.
+you will have a `~/.pipelines.json` file. Edit it as you see fit.
 
     wget https://github.com/mfschmidt/jjm_utils/raw/main/.pipelines.json \
-    -o ~/.pipelines.json \
+    -O ~/.pipelines.json \
     && sed -i 's@HOME@'"${HOME}"'@g' ~/.pipelines.json
 
 ### Execution
