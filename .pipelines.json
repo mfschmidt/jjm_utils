@@ -1,0 +1,17 @@
+{
+	"fmriprep": {
+		"pipeline_version": "20.2.1",
+		"derivatives": "HOME/derivatives",
+		"rawdata": "HOME/rawdata",
+		"freesurfer_license": "HOME/freesurfer/license.txt"
+	},
+	"qsiprep": {
+		"pipeline_version": "0.13.0",
+		"derivatives": "HOME/derivatives",
+		"rawdata": "HOME/rawdata",
+		"freesurfer_license": "HOME/freesurfer/license.txt",
+		"recon_spec": "dsi_studio_gqi",
+		"num_cpus": "8",
+		"memory_mb": "49152"
+	}
+}
