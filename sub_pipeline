@@ -270,7 +270,7 @@ def write_batch_script(args):
             batch_file.write("ls -laR {}/export/\n".format(args.rawdata))
         batch_file.write("\n")
         batch_file.write("singularity run --cleanenv \\\n")
-        batch_file.write("  -B {}:/data:ro \\\n".format(args.rawdata))
+        batch_file.write("  -B {}:/rawdata:ro \\\n".format(args.rawdata))
         batch_file.write("  -B {}:/out \\\n".format(args.staging_directory))
         batch_file.write("  -B {}:/work \\\n".format(args.work_directory))
         batch_file.write("  -B {}:/log \\\n".format(
@@ -283,7 +283,7 @@ def write_batch_script(args):
             args.freesurfer_license
         ))
         batch_file.write("  {} \\\n".format(args.sif_file))
-        batch_file.write("  /data /out participant \\\n")
+        batch_file.write("  /rawdata /out participant \\\n")
         batch_file.write("  -w /work \\\n")
         batch_file.write("  --fs-license-file /opt/freesurfer/license.txt \\\n")
         batch_file.write("  --participant-label {} \\\n".format(args.subject))
