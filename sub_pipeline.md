@@ -39,13 +39,13 @@ For one example, your .pipelines.json file could look like this:
 
 If you submitted a pipeline like this:
 
-    sub_pipeline.py fmriprep U00001
+    sub_pipeline fmriprep U00001
 
 It would use the freesurfer license from your .pipelines.json file.
 But if you wanted to use a different license, you could either edit your
 local config file or you could submit like this:
 
-    sub_pipeline.py fmriprep U00001 --freesurfer-license ~/license.txt
+    sub_pipeline fmriprep U00001 --freesurfer-license ~/license.txt
 
 So, if you plan to submit a bunch of jobs with the same settings,
 save them to your ~/.pipelines.json file and let sub_pipeline.py read them from
