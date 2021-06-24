@@ -245,13 +245,15 @@ def write_batch_script(args):
         "batch", "sub-" + args.subject, args.pipeline, args.timestamp,
     ]) + ".sbatch"
     batch_file_path = pathlib.Path(args.home, "bin", "slurm", script_name)
-    log_file_path = str(batch_file_path).replace(".sbatch", ".out")
+    if args.log_file is None:
+        setattr(args, "log_file", str(batch_file_path).replace(".sbatch", ".out"))
+    contained_log_file = os.path.join("/log", pathlib.Path(args.log_file).name)
     with open(batch_file_path, "w") as batch_file:
         batch_file.write("#!/bin/bash\n")
         batch_file.write("#SBATCH --job-name={}\n".format(args.subject))
         batch_file.write("#SBATCH --partition={}\n".format(args.slurm_partition))
-        batch_file.write("#SBATCH --output={}\n".format(log_file_path))
-        batch_file.write("#SBATCH --error={}\n".format(log_file_path))
+        batch_file.write("#SBATCH --output={}\n".format(contained_log_file))
+        batch_file.write("#SBATCH --error={}\n".format(contained_log_file))
         batch_file.write("#SBATCH --time=0\n")
         batch_file.write("#SBATCH --ntasks-per-node={}\n".format(args.num_cpus))
         batch_file.write("#SBATCH --mem={}\n".format(args.memory_mb))
@@ -271,6 +273,9 @@ def write_batch_script(args):
         batch_file.write("  -B {}:/data:ro \\\n".format(args.rawdata))
         batch_file.write("  -B {}:/out \\\n".format(args.staging_directory))
         batch_file.write("  -B {}:/work \\\n".format(args.work_directory))
+        batch_file.write("  -B {}:/log \\\n".format(
+            pathlib.Path(args.log_file).parent
+        ))
         batch_file.write("  -B {}:/opt/templateflow \\\n".format(
             args.templateflow_directory
         ))
@@ -338,9 +343,6 @@ def write_batch_script(args):
         batch_file.write("\n")
         batch_file.write("echo \"Job complete at $(date)\"\n")
         batch_file.write("\n")
-        batch_file.write("rsync -ah {}/*.{{err,out}} {}/logs/\n".format(
-            args.staging_directory, args.derivatives,
-        ))
         batch_file.write("# rm -rf {}\n".format(args.staging_directory))
 
     return batch_file_path
