@@ -1,0 +1,99 @@
+---
+- name: Install singularity prerequisites to all cluster nodes
+  hosts: cluster
+  remote_user: aa
+  become: yes
+  become_method: sudo
+  become_user: root
+  tasks:
+
+  - name: Install prerequisites
+    apt:
+      name: "{{ packages }}"
+      state: present
+      update_cache: yes
+    vars:
+      packages:
+        - build-essential
+        - libssl-dev
+        - uuid-dev
+        - libgpgme11-dev
+        - libseccomp-dev
+        - pkg-config
+        - squashfs-tools
+        - cryptsetup
+        - cryptsetup-bin
+        - git
+        - wget
+
+    # Another pre-requisite is go, or golang.
+    # It is installed to /usr/local/go,
+    # configured for user aa in /home/aa/ and is setup
+    # in /home/aa/.bashrc.
+    # The source code is also downloaded at
+    # /home/aa/go/src/github.com/sylabs/singularity
+    # already.
+    # To install a new version of go, the old version must be removed from
+    # /usr/local/go first. It can leave behind files that scrooge the new one.
+    
+  - name: Remove old go from /usr/local/go
+    file:
+      path: /usr/local/go
+      state: absent
+
+  - name: Download go if necessary
+    get_url:
+      url: https://golang.org/dl/go1.16.5.linux-amd64.tar.gz
+      dest: /home/aa/go1.16.5.linux-amd64.tar.gz
+
+  - name: Install go to /usr/local/go
+    unarchive:
+      src: /home/aa/go1.16.5.linux-amd64.tar.gz
+      dest: /usr/local
+      creates: /usr/local/go/bin/go
+  
+  - name: Remove old go links
+    file:
+      path: '/usr/local/bin/{{ item }}'
+      state: absent
+    with_items:
+      - go
+      - gofmt
+      - godoc
+
+  - name: Link new go executables
+    file:
+      src: '/usr/local/go/bin/{{ item.src }}'
+      dest: '/usr/local/bin/{{ item.dest }}'
+      state: link
+    with_items:
+      - { src: go, dest: go }
+      - { src: gofmt, dest: gofmt }
+      
+    
+- name: Install singularity to all cluster nodes
+  hosts: cluster
+  serial: 1
+  remote_user: aa
+  become: yes
+  tasks:
+
+  - name: Download Singularity
+    get_url:
+      url: "https://github.com/sylabs/singularity/releases/download/v3.8.0/singularity-ce-3.8.0.tar.gz"
+      dest: /home/aa/
+
+  - name: Extract Singularity
+    unarchive:
+            src: /home/aa/singularity-ce-3.8.0.tar.gz
+            dest: /tmp
+            remote_src: yes
+
+  - name: Make and install singularity
+    become: yes
+    shell: ./mconfig && cd ./builddir && make && sudo make install
+    args:
+      executable: /bin/bash
+      chdir: /tmp/singularity-ce-3.8.0
+      
+

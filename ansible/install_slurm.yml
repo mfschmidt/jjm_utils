@@ -1,0 +1,32 @@
+---
+- name: Install slurm to cluster
+  hosts: cluster
+  remote_user: aa
+  become: yes
+  become_method: sudo
+  become_user: root
+  tasks:
+
+  - name: Install prerequisites
+    apt:
+      name: "{{ packages }}"
+      state: present
+      update_cache: yes
+    vars:
+      packages:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+        - gnupg2
+        - sshpass
+        - software-properties-common
+
+  - name: Install slurm-wlm
+    apt:
+      update_cache: yes
+      name: "{{ packages }}"
+    vars:
+      packages:
+        - munge
+        - slurm-wlm
+
