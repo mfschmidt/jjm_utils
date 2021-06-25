@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# sub_pipeline.py
+# sub_pipeline
 
 import sys
 import os
@@ -12,6 +12,37 @@ import json
 import subprocess
 
 from datetime import datetime
+
+
+def retrieve_local_settings(args):
+    """ Load user's json and override defaults, but not cmdline """
+
+    # Fill in missing arguments with user settings in home directory
+    user_settings_file = os.path.join(args.home, ".pipelines.json")
+    if not os.path.isfile(user_settings_file):
+        print("No settings found at {}.".format(user_settings_file))
+        return {}
+
+    user_settings = json.load(open(user_settings_file, "r"))
+    if args.verbose:
+        print("Found user settings at {}".format(user_settings_file))
+    if args.pipeline in user_settings:
+        if args.verbose:
+            print("  {} in settings".format(args.pipeline))
+        for key in user_settings[args.pipeline]:
+            # Override any available None setting
+            if getattr(args, key.replace("-", "_")) is None:
+                setattr(args, key.replace("-", "_"),
+                        user_settings[args.pipeline][key])
+                if args.verbose:
+                    print("  using user settings: {} := {}".format(
+                        key, user_settings[args.pipeline][key]
+                    ))
+            else:
+                if args.verbose:
+                    print("  args override user settings: {} := {}".format(
+                        key, user_settings[args.pipeline][key]
+                    ))
 
 
 def get_arguments():
@@ -141,36 +172,6 @@ def get_arguments():
         setattr(args, "slurm_partition", args.pipeline)
 
     return args
-
-
-def use_local_settings(args):
-    """ Load user's json and override defaults, but not cmdline """
-
-    # Fill in missing arguments with user settings in home directory
-    user_settings_file = os.path.join(args.home, ".pipelines.json")
-    if os.path.isfile(user_settings_file):
-        if args.verbose:
-            print("Found user settings at {}".format(user_settings_file))
-        user_settings = json.load(open(user_settings_file, "r"))
-        if args.pipeline in user_settings:
-            if args.verbose:
-                print("  {} in settings".format(args.pipeline))
-            for key in user_settings[args.pipeline]:
-                # Override any available None setting
-                if getattr(args, key.replace("-", "_")) is None:
-                    setattr(args, key.replace("-", "_"),
-                            user_settings[args.pipeline][key])
-                    if args.verbose:
-                        print("  using user settings: {} := {}".format(
-                            key, user_settings[args.pipeline][key]
-                        ))
-                else:
-                    if args.verbose:
-                        print("  args override user settings: {} := {}".format(
-                            key, user_settings[args.pipeline][key]
-                        ))
-    else:
-        print("No settings found at {}.".format(user_settings_file))
 
 
 def get_singularity_image(args):
