@@ -101,6 +101,10 @@ def get_arguments():
         help="The amount of memory to allocate for the pipeline.",
     )
     parser.add_argument(
+        "--stage-output", default=False, action="store_true",
+        help="Set this flag to cache output before copying to derivatives.",
+    )
+    parser.add_argument(
         "--verbose", action="store_true",
         help="set to trigger verbose output",
     )
@@ -263,7 +267,8 @@ def write_batch_script(args):
         batch_file.write("\n")
         batch_file.write("mkdir -p {}\n".format(args.work_directory))
         batch_file.write("mkdir -p {}\n".format(args.templateflow_directory))
-        batch_file.write("mkdir -p {}\n".format(args.staging_directory))
+        if args.stage_output:
+            batch_file.write("mkdir -p {}\n".format(args.staging_directory))
         if args.verbose:
             batch_file.write("\n")
             batch_file.write("env\n")
@@ -271,7 +276,10 @@ def write_batch_script(args):
         batch_file.write("\n")
         batch_file.write("singularity run --cleanenv \\\n")
         batch_file.write("  -B {}:/rawdata:ro \\\n".format(args.rawdata))
-        batch_file.write("  -B {}:/out \\\n".format(args.staging_directory))
+        if args.stage_output:
+            batch_file.write("  -B {}:/out \\\n".format(args.staging_directory))
+        else:
+            batch_file.write("  -B {}:/out \\\n".format(args.derivatives))
         batch_file.write("  -B {}:/work \\\n".format(args.work_directory))
         batch_file.write("  -B {}:/log \\\n".format(
             pathlib.Path(args.log_file).parent
@@ -307,37 +315,42 @@ def write_batch_script(args):
         batch_file.write("\n")
         batch_file.write("if [[ \"$?\" != \"0\" ]]; then\n")
         batch_file.write("  echo \"Container run failed. Avoiding clean-up.\"\n")
-        batch_file.write("  echo \"$(hostname):{}\"\n".format(args.staging_directory))
+        batch_file.write("  echo \"$(hostname):{}\"\n".format(args.work_directory))
+        if args.stage_output:
+            batch_file.write("  echo \"$(hostname):{}\"\n".format(args.staging_directory))
+        else:
+            batch_file.write("  echo \"{}\"\n".format(args.derivatives))
         batch_file.write("  exit $?\n")
         batch_file.write("fi\n")
         batch_file.write("\n")
         batch_file.write("# Format and copy output to final destination.\n")
-        batch_file.write("chown {}:{} --recursive {}\n".format(
-            args.username, args.userid, args.staging_directory
-        ))
-        batch_file.write("rsync -ah {}/{}/sub-{}* {}/{}/\n".format(
-            args.staging_directory, args.pipeline, args.subject,
-            args.derivatives, args.pipeline
-        ))
-        if args.pipeline == "fmriprep":
-            batch_file.write("if [[ ! -e {}/freesurfer/sub-{} ]]; then\n".format(
-                args.derivatives, args.subject,
+        if args.stage_output:
+            batch_file.write("chown {}:{} --recursive {}\n".format(
+                args.username, args.userid, args.staging_directory
             ))
-            batch_file.write("  rsync -ah {}/freesurfer/sub-{}* {}/freesurfer/\n".format(
-                args.staging_directory, args.subject, args.derivatives,
+            batch_file.write("rsync -ah {}/{}/sub-{}* {}/{}/\n".format(
+                args.staging_directory, args.pipeline, args.subject,
+                args.derivatives, args.pipeline
             ))
-            batch_file.write("else\n")
-            batch_file.write("  echo \"Freesurfer output at {} was abandoned\"\n".format(
-                args.staging_directory,
-            ))
-            batch_file.write("  echo \"to avoid over-writing {}/freesurfer/sub-{}\"\n".format(
-                args.derivatives, args.subject,
-            ))
-            batch_file.write("fi\n")
-        elif args.pipeline == "qsiprep":
-            batch_file.write("rsync -ah {}/qsirecon/sub-{}* {}/qsirecon/\n".format(
-                args.staging_directory, args.subject, args.derivatives,
-            ))
+            if args.pipeline == "fmriprep":
+                batch_file.write("if [[ ! -e {}/freesurfer/sub-{} ]]; then\n".format(
+                    args.derivatives, args.subject,
+                ))
+                batch_file.write("  rsync -ah {}/freesurfer/sub-{}* {}/freesurfer/\n".format(
+                    args.staging_directory, args.subject, args.derivatives,
+                ))
+                batch_file.write("else\n")
+                batch_file.write("  echo \"Freesurfer output at {} was abandoned\"\n".format(
+                    args.staging_directory,
+                ))
+                batch_file.write("  echo \"to avoid over-writing {}/freesurfer/sub-{}\"\n".format(
+                    args.derivatives, args.subject,
+                ))
+                batch_file.write("fi\n")
+            elif args.pipeline == "qsiprep":
+                batch_file.write("rsync -ah {}/qsirecon/sub-{}* {}/qsirecon/\n".format(
+                    args.staging_directory, args.subject, args.derivatives,
+                ))
         batch_file.write("rm -rf {}\n".format(args.work_directory))
         batch_file.write("# intentionally leaving templateflow dir\n")
         batch_file.write("\n")
