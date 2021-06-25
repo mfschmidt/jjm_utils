@@ -123,27 +123,8 @@ def get_arguments():
     args = parser.parse_args()
     setattr(args, "timestamp", datetime.now().strftime("%Y%m%d%H%M%S"))
 
-    # Fill in missing arguments with user settings in home directory
-    user_settings_file = os.path.join(args.home, ".pipelines.json")
-    if os.path.isfile(user_settings_file):
-        if args.verbose:
-            print("Found user settings at {}".format(user_settings_file))
-        user_settings = json.load(open(user_settings_file, "r"))
-        if args.pipeline in user_settings:
-            if args.verbose:
-                print("  {} in settings".format(args.pipeline))
-            for key in user_settings[args.pipeline]:
-                if getattr(args, key.replace("-", "_")) is None:
-                    setattr(args, key, user_settings[args.pipeline][key])
-                    if args.verbose:
-                        print("  using user settings: {} := {}".format(
-                            key, user_settings[args.pipeline][key]
-                        ))
-                else:
-                    if args.verbose:
-                        print("  args override user settings: {} := {}".format(
-                            key, user_settings[args.pipeline][key]
-                        ))
+    # Find user's local settings file and use what we can from it.
+    use_local_settings(args)
 
     # Generate final defaults, if they aren't provided.
     if getattr(args, "work_directory") is None:
@@ -160,6 +141,36 @@ def get_arguments():
         setattr(args, "slurm_partition", args.pipeline)
 
     return args
+
+
+def use_local_settings(args):
+    """ Load user's json and override defaults, but not cmdline """
+
+    # Fill in missing arguments with user settings in home directory
+    user_settings_file = os.path.join(args.home, ".pipelines.json")
+    if os.path.isfile(user_settings_file):
+        if args.verbose:
+            print("Found user settings at {}".format(user_settings_file))
+        user_settings = json.load(open(user_settings_file, "r"))
+        if args.pipeline in user_settings:
+            if args.verbose:
+                print("  {} in settings".format(args.pipeline))
+            for key in user_settings[args.pipeline]:
+                # Override any available None setting
+                if getattr(args, key.replace("-", "_")) is None:
+                    setattr(args, key.replace("-", "_"),
+                            user_settings[args.pipeline][key])
+                    if args.verbose:
+                        print("  using user settings: {} := {}".format(
+                            key, user_settings[args.pipeline][key]
+                        ))
+                else:
+                    if args.verbose:
+                        print("  args override user settings: {} := {}".format(
+                            key, user_settings[args.pipeline][key]
+                        ))
+    else:
+        print("No settings found at {}.".format(user_settings_file))
 
 
 def get_singularity_image(args):
@@ -250,7 +261,9 @@ def write_batch_script(args):
     ]) + ".sbatch"
     batch_file_path = pathlib.Path(args.home, "bin", "slurm", script_name)
     if args.log_file is None:
-        setattr(args, "log_file", str(batch_file_path).replace(".sbatch", ".out"))
+        setattr(args, "log_file", str(batch_file_path).replace(
+            ".sbatch", ".%j.out"
+        ))
     with open(batch_file_path, "w") as batch_file:
         batch_file.write("#!/bin/bash\n")
         batch_file.write("#SBATCH --job-name={}\n".format(args.subject))
@@ -272,7 +285,6 @@ def write_batch_script(args):
         if args.verbose:
             batch_file.write("\n")
             batch_file.write("env\n")
-            batch_file.write("ls -laR {}/export/\n".format(args.rawdata))
         batch_file.write("\n")
         batch_file.write("singularity run --cleanenv \\\n")
         batch_file.write("  -B {}:/rawdata:ro \\\n".format(args.rawdata))
@@ -281,9 +293,6 @@ def write_batch_script(args):
         else:
             batch_file.write("  -B {}:/out \\\n".format(args.derivatives))
         batch_file.write("  -B {}:/work \\\n".format(args.work_directory))
-        batch_file.write("  -B {}:/log \\\n".format(
-            pathlib.Path(args.log_file).parent
-        ))
         batch_file.write("  -B {}:/opt/templateflow \\\n".format(
             args.templateflow_directory
         ))
