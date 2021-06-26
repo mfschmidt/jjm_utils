@@ -13,8 +13,8 @@ for JOB in $JOBS; do
     CMD=${CMD##*=}
     TS=${CMD%%.*}
     TS=${TS##*_}
-    STAGING=$(ls -1d /tmp/*prep_${TS}_staging)
-    WORKING=$(ls -1d /tmp/*prep_${TS}_working)    
+    STAGING=$(2>/dev/null ls -1d /tmp/*prep_${TS}_staging)
+    WORKING=$(2>/dev/null ls -1d /tmp/*prep_${TS}_working)    
     if [[ "$HOST" == "$(hostname)" ]]; then
     	echo "Host $HOST, Job $JOB, timestamp $TS:"
     	echo "  C: $CMD"
@@ -28,9 +28,10 @@ done
 
 echo "Found $N_ACTIVE active jobs on host $(hostname)."
 
-ALL_TMP=$(ls -1d /tmp/*prep_*_*ing)
-REGEX="_([0-9*])_"
+ALL_TMP=$(2>/dev/null ls -1d /tmp/*prep_*_*ing)
+REGEX=".*_([0-9*])_.*ing"
 for TMP in ALL_TMP; do
+  echo "  ...checking $TMP..."
   if [[ $TMP =~ $REGEX ]]; then
     TMP_TS="${BASH_REMATCH[1]}"
     if [[ "${ARR[$TMP_TS]}" == "" ]]; then
@@ -38,5 +39,7 @@ for TMP in ALL_TMP; do
     else
       echo "  SAVE $TMP"
     fi
+  else
+    echo "      no match"
   fi
 done
