@@ -34,8 +34,8 @@ for TMP in $ALL_TMP; do
   echo "  ...checking $TMP..."
   if [[ $TMP =~ $REGEX ]]; then
     TMP_TS="${BASH_REMATCH[1]}"
-    echo "   ... ${TMP_TS} vs ${ARR[$TMP_TS]} vs ${ARR["$TMP_TS"]}"
-    if [[ "${ARR[$TMP_TS]}" == "" ]]; then
+    echo "   ... ${TMP_TS} vs ${ARR[TMP_TS]} vs ${ARR["$TMP_TS"]}"
+    if [[ "${ARR[TMP_TS]}" == "" ]]; then
       echo "  OK to delete $TMP, inactive."
     else
       echo "  SAVE $TMP"
