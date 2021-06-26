@@ -156,18 +156,23 @@ def get_arguments():
     )
     parser.add_argument(
         "--num-cpus",
-        default=user_settings.get("num-cpus", "4"),
+        default=user_settings.get("num-cpus", "8"),
         help="The number of processors to allocate for the pipeline.",
     )
     parser.add_argument(
         "--memory-mb",
-        default=user_settings.get("memory-mb", "24576"),
+        default=user_settings.get("memory-mb", "32768"),
         help="The amount of memory to allocate for the pipeline.",
     )
     parser.add_argument(
         "--stage-output", action="store_true",
         default=user_settings.get("stage-output", False),
         help="Set this flag to cache output before copying to derivatives.",
+    )
+    parser.add_argument(
+        "--tmp-root",
+        default=user_settings.get("tmp-root", "/var/tmp"),
+        help="Set this path to house default working and staging areas.",
     )
     parser.add_argument(
         "--verbose", action="store_true",
@@ -197,11 +202,13 @@ def get_arguments():
     # Generate final defaults, if they aren't provided.
     if getattr(args, "work_directory") is None:
         setattr(args, "work_directory", os.path.join(
-            "/tmp", "_".join([args.pipeline, args.timestamp, "working", ])
+            args.tmp_root,
+            "_".join([args.pipeline, args.timestamp, "working", ])
         ))
     if getattr(args, "templateflow_directory") is None:
         setattr(args, "templateflow_directory", os.path.join(
-            "/tmp", "templateflow"
+            args.tmp_root,
+            "templateflow"
         ))
     if getattr(args, "slurm_partition") is None:
         setattr(args, "slurm_partition", args.pipeline)
@@ -210,7 +217,8 @@ def get_arguments():
     if args.stage_output:
         if getattr(args, "staging_directory") is None:
             setattr(args, "staging_directory", os.path.join(
-                "/tmp", "_".join([args.pipeline, args.timestamp, "staging", ])
+                args.tmp_root,
+                "_".join([args.pipeline, args.timestamp, "staging", ])
             ))
     else:
         setattr(args, "staging_directory", args.derivatives)
@@ -341,7 +349,7 @@ def write_batch_script(args):
             f"#SBATCH --time=0\n"
             f"#SBATCH --ntasks-per-node={args.num_cpus}\n"
             f"#SBATCH --mem={args.memory_mb}\n"
-            f"#SBATCH --chdir=/tmp/\n"
+            f"#SBATCH --chdir={args.tmp_root}\n"
             f"#SBATCH --export={tf_env}=/opt/templateflow\n"
             f"\n"
             f"mkdir -p {args.work_directory}\n"
