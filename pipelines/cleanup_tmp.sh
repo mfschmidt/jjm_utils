@@ -35,7 +35,7 @@ for TMP in $ALL_TMP; do
     TMP_TS="${BASH_REMATCH[1]}"
     if [[ "${ACTIVE_JOBS[TMP_TS]}" == "" ]]; then
       echo "removing $(sudo du -sh $TMP), job is finished."
-      echo "sudo rm -rf $TMP"
+      sudo rm -rf $TMP
     else
       echo "avoiding active job at $TMP"
     fi
