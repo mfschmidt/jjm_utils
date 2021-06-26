@@ -30,7 +30,7 @@ echo "Found $N_ACTIVE active jobs on host $(hostname)."
 
 ALL_TMP=$(2>/dev/null ls -1d /tmp/*prep_*_*ing)
 REGEX=".*_([0-9*])_.*ing"
-for TMP in ALL_TMP; do
+for TMP in $ALL_TMP; do
   echo "  ...checking $TMP..."
   if [[ $TMP =~ $REGEX ]]; then
     TMP_TS="${BASH_REMATCH[1]}"
