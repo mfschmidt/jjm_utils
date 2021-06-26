@@ -14,14 +14,14 @@ in `/var/lib/singularity/images/`.
 Download a local config file template and customize it. Following this command,
 you will have a `~/.pipelines.json` file. Edit it as you see fit.
 
-    wget https://github.com/mfschmidt/jjm_utils/raw/main/.pipelines.json \
+    wget https://raw.githubusercontent.com/mfschmidt/jjm_utils/main/pipelines/.pipelines.json \
     -O ~/.pipelines.json \
     && sed -i 's@HOME@'"${HOME}"'@g' ~/.pipelines.json
 
 ### Execution
 
 Executing `sub_pipeline` without arguments will output brief usage instructions.
-Executing it with the -h flag will give you more explicit instructions.
+Executing it with the `-h` flag will give you more explicit instructions.
 
 It will process arguments in a cascading order:
 
@@ -41,16 +41,16 @@ If you submitted a pipeline like this:
 
     sub_pipeline fmriprep U00001
 
-It would use the freesurfer license from your .pipelines.json file.
+It would use the freesurfer license from your `~/.pipelines.json` file.
 But if you wanted to use a different license, you could either edit your
 local config file or you could submit like this:
 
     sub_pipeline fmriprep U00001 --freesurfer-license ~/license.txt
 
 So, if you plan to submit a bunch of jobs with the same settings,
-save them to your ~/.pipelines.json file and let sub_pipeline.py read them from
+save them to your `~/.pipelines.json` file and let sub_pipeline.py read them from
 there. If you need to change them frequently, specify them on the command line.
-Set --verbose to see a full description of everything it finds and what it
+Set `--verbose` to see a full description of everything it finds and what it
 assumes along the way.
 
 ## What it does
@@ -72,5 +72,5 @@ with the logs for future reference.
 
 All of this is completely transparent. Read the python code at
 `/usr/local/bin/sub_pipeline` to see what it's doing.
-Read each individual batch file it creates in ~/bin/slurm/.
+Read each individual batch file it creates in `~/bin/slurm/`.
 And share any problems with Mike.
