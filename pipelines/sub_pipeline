@@ -7,9 +7,11 @@ import os
 import platform
 import pwd
 import pathlib
-import argparse
 import json
 import subprocess
+
+import argparse
+from argparse import RawTextHelpFormatter
 
 from datetime import datetime
 
@@ -48,7 +50,14 @@ def get_arguments():
     )
 
     parser = argparse.ArgumentParser(
-        description="Submit a Singularity pipeline request to SLURM.",
+        description="\n".join([
+            "Submit a Singularity pipeline request to SLURM.",
+            "",
+            "Save consistent settings to ~/.pipelines.json.",
+            "Use command-line to override or supply infrequent options.",
+            "See README at https://github.com/mfschmidt/jjm_utils/",
+        ]),
+        formatter_class=RawTextHelpFormatter,
     )
     parser.add_argument(
         "pipeline",
