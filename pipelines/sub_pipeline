@@ -41,6 +41,41 @@ def retrieve_user_settings(pipeline, verbose=False):
     return user_settings[pipeline]
 
 
+def settle_memory(args):
+    # Convert memory specs
+    if args.memory_mb is None and args.memory_gb is None:
+        setattr(args, "memory_mb", 28 * 1024)
+        setattr(args, "memory_gb", 28)
+    elif args.memory_gb is None:
+        setattr(args, "memory_mb", int(args.memory_mb))
+        setattr(args, "memory_gb", int(args.memory_mb / 1024))
+    elif args.memory_mb is None:
+        setattr(args, "memory_gb", int(args.memory_gb))
+        setattr(args, "memory_mb", int(args.memory_gb * 1024))
+    else:
+        # Both are set, unlikely, but just use what's given.
+        setattr(args, "memory_gb", int(args.memory_gb))
+        setattr(args, "memory_mb", int(args.memory_mb))
+
+
+def settle_threads(args):
+    # Convert threads == cpus
+    # We only use num_threads, but we'll accept num_cpus as the same thing.
+    if args.num_cpus is None and args.num_threads is None:
+        setattr(args, "num_cpus", 8)
+        setattr(args, "num_threads", 8)
+    elif args.num_threads is None:
+        setattr(args, "num_cpus", int(args.num_cpus))
+        setattr(args, "num_threads", int(args.num_cpus))
+    elif args.num_cpus is None:
+        setattr(args, "num_threads", int(args.num_threads))
+        setattr(args, "num_cpus", int(args.num_threads))
+    else:
+        # Both are set, unlikely, but just use what's given.
+        setattr(args, "num_threads", int(args.num_threads))
+        setattr(args, "num_cpus", int(args.num_cpus))
+
+
 def get_arguments():
     """ Parse command line arguments """
 
@@ -156,12 +191,22 @@ def get_arguments():
     )
     parser.add_argument(
         "--num-cpus",
-        default=user_settings.get("num-cpus", "8"),
-        help="The number of processors to allocate for the pipeline.",
+        default=user_settings.get("num-cpus"),
+        help="The number of cpus==threads to allocate for the pipeline.",
+    )
+    parser.add_argument(
+        "--num-threads",
+        default=user_settings.get("num-threads"),
+        help="The number of threads==cpus to allocate for the pipeline.",
     )
     parser.add_argument(
         "--memory-mb",
-        default=user_settings.get("memory-mb", "32768"),
+        default=user_settings.get("memory-mb"),
+        help="The amount of memory to allocate for the pipeline.",
+    )
+    parser.add_argument(
+        "--memory-gb",
+        default=user_settings.get("memory-gb"),
         help="The amount of memory to allocate for the pipeline.",
     )
     parser.add_argument(
@@ -198,6 +243,9 @@ def get_arguments():
 
     args = parser.parse_args()
     setattr(args, "timestamp", datetime.now().strftime("%Y%m%d%H%M%S"))
+
+    settle_memory(args)
+    settle_threads(args)
 
     # Generate final defaults, if they aren't provided.
     if getattr(args, "work_directory") is None:
@@ -347,7 +395,7 @@ def write_batch_script(args):
             f"#SBATCH --output={args.log_file}\n"
             f"#SBATCH --error={args.log_file}\n"
             f"#SBATCH --time=0\n"
-            f"#SBATCH --ntasks-per-node={args.num_cpus}\n"
+            f"#SBATCH --ntasks-per-node={args.num_threads}\n"
             f"#SBATCH --mem={args.memory_mb}\n"
             f"#SBATCH --chdir={args.tmp_root}\n"
             f"#SBATCH --export={tf_env}=/opt/templateflow\n"
@@ -365,28 +413,35 @@ def write_batch_script(args):
             f"  {args.sif_file} \\\n"
             f"  /rawdata /out participant \\\n"
             f"  -w /work \\\n"
-            f"  --fs-license-file /opt/freesurfer/license.txt \\\n"
             f"  --participant-label {args.subject} \\\n"
         )
         # TODO: Somewhere in here, pass along any arguments we did not
         #       explicitly handle.
         if args.pipeline == "fmriprep":
+            batch_file.write(
+                f"  --fs-license-file /opt/freesurfer/license.txt \\\n"
+                f"  --nprocs {args.num_threads} --mem {args.memory_gb}\n"
+            )
             if args.output_spaces is not None:
-                batch_file.write("  --output-spaces {} \\\n".format(
-                    args.output_spaces
-                ))
+                batch_file.write(
+                    f"  --output-spaces {args.output_spaces} \\\n"
+                )
         elif args.pipeline == "qsiprep":
             batch_file.write(
+                f"  --fs-license-file /opt/freesurfer/license.txt \\\n"
                 f"  --output-resolution {args.output_resolution} \\\n"
                 f"  --hmc-model {args.hmc_model} \\\n"
                 f"  --output-space {args.output_space} \\\n"
                 f"  --template {args.template} \\\n"
+                f"  --nthreads {args.num_threads} --mem_mb {args.memory_mb}\n"
             )
             if (args.recon_spec is not None) and (args.recon_spec != "none"):
                 batch_file.write(f"  --recon-spec {args.recon_spec} \\\n")
-        num_threads = int(args.num_cpus) * 2
+        else:  # mriqc
+            batch_file.write(
+                f"  --nprocs {args.num_threads} --mem_gb {args.memory_gb}\n"
+            )
         batch_file.write(
-            f"  --nthreads {num_threads} --mem-mb {args.memory_mb}\n"
             f"\nif [[ \"$?\" != \"0\" ]]; then\n"
             f"  echo \"Container run failed. Avoiding clean-up.\"\n"
             f"  echo \"$(hostname):{args.work_directory}\"\n"
