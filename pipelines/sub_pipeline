@@ -493,9 +493,9 @@ def submit_batch_script(sbatch_file, dry_run=False, verbose=False):
     """ Create the batch script to batch the pipeline execution. """
     if verbose:
         print("|==========---------- Batch file follows ----------==========|")
-        subprocess.run(["cat", sbatch_file, ], check=True)
+        subprocess.run(["cat", str(sbatch_file), ], check=True)
         print("|==========----------   end batch file   ----------==========|")
-    print("Batch file was saved to {}".format(sbatch_file))
+    print("Batch file was saved to {}".format(str(sbatch_file)))
     if dry_run:
         print("NOT submitting job because dry-run is True.")
     else:
@@ -503,7 +503,7 @@ def submit_batch_script(sbatch_file, dry_run=False, verbose=False):
             datetime.now().strftime("%Y%m%d %H:%M:%S")
         ))
         sbatch_submit_process = subprocess.run(
-            ["sbatch", sbatch_file, ], check=True,
+            ["sbatch", str(sbatch_file), ], check=True,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         )
         print(sbatch_submit_process.stdout.decode("utf-8"))
