@@ -251,7 +251,7 @@ def get_arguments():
     if getattr(args, "work_directory") is None:
         setattr(args, "work_directory", os.path.join(
             args.tmp_root,
-            "_".join([args.pipeline, args.timestamp, "working", ])
+            "_".join([args.pipeline, args.subject, args.timestamp, "working", ])
         ))
     if getattr(args, "templateflow_directory") is None:
         setattr(args, "templateflow_directory", os.path.join(
@@ -266,7 +266,7 @@ def get_arguments():
         if getattr(args, "staging_directory") is None:
             setattr(args, "staging_directory", os.path.join(
                 args.tmp_root,
-                "_".join([args.pipeline, args.timestamp, "staging", ])
+                "_".join([args.pipeline, args.subject, args.timestamp, "staging", ])
             ))
     else:
         setattr(args, "staging_directory", args.derivatives)
