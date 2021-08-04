@@ -165,19 +165,24 @@ def get_arguments():
         help="The isotropic resolution in mm for qsiprep output",
     )
     parser.add_argument(
+        "--template-resampling-grid",
+        default=user_settings.get("template-resampling-grid", "2mm"),
+        help="The isotropic resolution for old fmriprep output",
+    )
+    parser.add_argument(
         "--output-space",
         default=user_settings.get("output-space", "T1w"),
-        help="Anatomical space for qsiprep output, should stay with T1w.",
+        help="Anatomical space for qsiprep and old fmriprep output, should stay with T1w.",
     )
     parser.add_argument(
         "--output-spaces",
         default=user_settings.get("output-spaces"),
-        help="Anatomical space and resolution for fmiprep output",
+        help="Anatomical space and resolution for new fmiprep output",
     )
     parser.add_argument(
         "--template",
         default=user_settings.get("template", "MNI152NLin2009cAsym"),
-        help="The intended template for qsiprep",
+        help="The intended template for qsiprep and old fmriprep",
     )
     parser.add_argument(
         "--recon-spec",
@@ -419,7 +424,7 @@ def write_batch_script(args):
         #       explicitly handle.
         if args.pipeline == "fmriprep":
             batch_file.write(
-                f"  --fs-license-file /opt/freesurfer/license.txt \\\n"
+                "  --fs-license-file /opt/freesurfer/license.txt \\\n"
             )
             if args.pipeline_version.startswith("1."):
                 if args.output_space is not None:
@@ -427,7 +432,7 @@ def write_batch_script(args):
                         f"  --nthreads {args.num_threads} --mem_mb {args.memory_mb} \\\n"
                         f"  --output-space {args.output_space} \\\n"
                         f"  --template {args.template} \\\n"
-                        f"  --template-resampling-grid {args.output_resolution}mm\n"
+                        f"  --template-resampling-grid {args.template_resampling_grid}\n"
                     )
             else:
                 if args.output_spaces is not None:
