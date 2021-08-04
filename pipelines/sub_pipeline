@@ -76,6 +76,12 @@ def settle_threads(args):
         setattr(args, "num_cpus", int(args.num_cpus))
 
 
+def settle_subject(args):
+    # Allow for "U00000" or "sub-U00000"
+    if args.subject.startswith("sub-"):
+        setattr(args, "subject", args.subject[4:])
+
+
 def get_arguments():
     """ Parse command line arguments """
 
@@ -251,6 +257,7 @@ def get_arguments():
 
     settle_memory(args)
     settle_threads(args)
+    settle_subject(args)
 
     # Generate final defaults, if they aren't provided.
     if getattr(args, "work_directory") is None:
