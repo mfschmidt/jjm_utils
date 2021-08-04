@@ -422,16 +422,18 @@ def write_batch_script(args):
                 f"  --fs-license-file /opt/freesurfer/license.txt \\\n"
                 f"  --nprocs {args.num_threads} --mem_mb {args.memory_mb}\n"
             )
-            if args.output_spaces is not None:  # for new fMRIPrep, like 20.2.0
-                batch_file.write(
-                    f"  --output-spaces {args.output_spaces} \\\n"
-                )
-            if args.output_space is not None:  # For old fMRIPrep, like 1.3.2
-                batch_file.write(
-                    f"  --output-space {args.output_space} \\\n"
-                    f"  --template {args.template} \\\n"
-                    f"  --template-resampling-grid {args.output_resolution} \\\n"
-                )
+            if args.pipeline_version.startswith("1."):
+                if args.output_space is not None:
+                    batch_file.write(
+                        f"  --output-space {args.output_space} \\\n"
+                        f"  --template {args.template} \\\n"
+                        f"  --template-resampling-grid {args.output_resolution}mm \\\n"
+                    )
+            else:
+                if args.output_spaces is not None:
+                    batch_file.write(
+                        f"  --output-spaces {args.output_spaces} \\\n"
+                    )
         elif args.pipeline == "qsiprep":
             batch_file.write(
                 f"  --fs-license-file /opt/freesurfer/license.txt \\\n"
