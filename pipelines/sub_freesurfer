@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Wrap the more general-purpose python script
+
+sub_pipeline freesurfer $@
