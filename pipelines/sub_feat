@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# Get the fsf file from the command line argument.
+FSF=$1
+if [ ! -f $FSF ]; then
+        echo "$FSF is not a file, giving up."
+        exit 1
+fi
+
+# Make sure we have a place to save stderr and stdout logs.
+mkdir -p ~/slurmlogs
+
+# How many cores shall we allocate for this job?
+# feat just uses 1 for now
+CORES=4
+
+# Create the command to run feat, remembering that SLURM doesn't have the same
+# ENV that we do in a user shell.
+sbatch -J feat_${CORES} \
+        -p fsl6 \
+        -N 1-1 \
+        -c ${CORES} \
+        --mem 2048M \
+        -t 0 \
+        -o $HOME/slurmlogs/feat-%j.out -e $HOME/slurmlogs/feat-%j.out \
+        --export=OPENBLAS_NUM_THREADS=$CORES \
+        $FSLDIR/bin/feat $FSF
