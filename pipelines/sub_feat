@@ -24,4 +24,5 @@ sbatch -J feat_${CORES} \
         -t 0 \
         -o $HOME/slurmlogs/feat-%j.out -e $HOME/slurmlogs/feat-%j.out \
         --export=OPENBLAS_NUM_THREADS=$CORES \
+        --export=FSLDIR=$FSLDIR \
         $FSLDIR/bin/feat $FSF
