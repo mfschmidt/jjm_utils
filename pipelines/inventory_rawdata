@@ -5,9 +5,20 @@ BASE=/data/BI/human/rawdata
 if [[ "$1" != "" ]]; then
 	if [[ -e "$1" ]]; then
 		BASE="${1}"
+	elif [[ -e "${BASE}/${1}" ]]; then
+		BASE="${BASE}/${1}"
 	else
 		echo "'$1' does not exist, using the default, '$BASE'"
     fi
+else
+	echo "Please supply a base directory or project name."
+	echo "Any of the following would work (given a real path)"
+	echo ""
+	echo "    $ inventory_rawdata new_conte"
+	echo "    $ inventory_rawdata /data/BI/human/rawdata/old_conte"
+	echo "    $ inventory_rawdata /data/export/home/me/my_project/rawdata"
+	echo ""
+	exit 0
 fi
 cd ${BASE}
 
