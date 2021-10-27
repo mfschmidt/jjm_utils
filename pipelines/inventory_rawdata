@@ -20,18 +20,12 @@ NUM_7SUBS=0
 for SUB in $(ls -1d sub-*); do
 	printf -v STR "%-11s" "$SUB"
 
+	STR="$STR ${SUB:4:1}"
 	NUM_SUBS=$(( $NUM_SUBS + 1 ))
 	if [[ "${SUB:4:1}" == "5" ]]; then
 		NUM_5SUBS=$(( $NUM_5SUBS + 1 ))
-		STR="$STR 5"
-	fi
-	if [[ "${SUB:4:1}" == "7" ]]; then
+	elif [[ "${SUB:4:1}" == "7" ]]; then
 		NUM_7SUBS=$(( $NUM_7SUBS + 1 ))
-		STR="$STR 7"
-	fi
-	if [[ "${SUB:4:1}" == "U" ]]; then
-		NUM_7SUBS=$(( $NUM_7SUBS + 1 ))
-		STR="$STR U"
 	fi
 
     for SES in $(ls -1d ${BASE}/$SUB/ses-*); do
@@ -96,4 +90,5 @@ for SUB in $(ls -1d sub-*); do
 done
 
 echo "Found $NUM_SUBS subjects in '$BASE'."
-echo "$NUM_5SUBS start with 5. $NUM_7SUBS start with 7."
+if [[ $NUM_5SUBS -gt 0 ]]; then echo "$NUM_5SUBS start with 5."; fi
+if [[ $NUM_7SUBS -gt 0 ]]; then echo "$NUM_7SUBS start with 7."; fi
