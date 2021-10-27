@@ -2,7 +2,12 @@
 
 # Get the fsf file from the command line argument.
 FSF=$1
-if [ ! -f $FSF ]; then
+if [[ "$FSF" == "" ]]; then
+        echo "I need a .fsf file to process, not submitting the job."
+        echo "Try $ sub_feat /somepath/somefile.fsf"
+        exit 1
+fi
+if [[ ! -f $FSF ]]; then
         echo "$FSF is not a file, giving up."
         exit 1
 fi
