@@ -14,14 +14,12 @@ SRC_FILES=\
 "pipelines/sub_{pipeline,fmriprep,qsiprep,mriqc,feat} \
  pipelines/cleanup_tmp.sh \
  pipelines/inventory_rawdata \
- confounds/filter_confounds.{py,sh}
-"
+ confounds/filter_confounds.{py,sh}"
 TGT_FILES=\
 "${DEST}/sub_{pipeline,fmriprep,qsiprep,mriqc,feat} \
  ${DEST}/cleanup_tmp.sh \
  ${DEST}/inventory_rawdata \
- ${DEST}/filter_confounds.{py,sh}
-"
+ ${DEST}/filter_confounds.{py,sh}"
 
 ssh ${1} "
 cd ~/jjm_utils
