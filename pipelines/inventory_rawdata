@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+
+# First, figure out where to look
+BASE=/data/BI/human/rawdata
+if [[ "$1" != "" ]]; then
+	if [[ -e "$1" ]]; then
+		BASE="${1}"
+	else
+		echo "'$1' does not exist, using the default, '$BASE'"
+    fi
+fi
+cd ${BASE}
+
+# Second, look through the subjects
+echo "SUBJECT     _  anat T1 T2 - dwi  i b b - fmap  # - func  R T"
+echo "___________ _  __________   __________   _______   _________"
+NUM_SUBS=0
+NUM_5SUBS=0
+NUM_7SUBS=0
+for SUB in $(ls -1d sub-*); do
+	printf -v STR "%-11s" "$SUB"
+
+	NUM_SUBS=$(( $NUM_SUBS + 1 ))
+	if [[ "${SUB:4:1}" == "5" ]]; then
+		NUM_5SUBS=$(( $NUM_5SUBS + 1 ))
+		STR="$STR 5"
+	fi
+	if [[ "${SUB:4:1}" == "7" ]]; then
+		NUM_7SUBS=$(( $NUM_7SUBS + 1 ))
+		STR="$STR 7"
+	fi
+	if [[ "${SUB:4:1}" == "U" ]]; then
+		NUM_7SUBS=$(( $NUM_7SUBS + 1 ))
+		STR="$STR U"
+	fi
+
+    for SES in $(ls -1d ${BASE}/$SUB/ses-*); do
+    	SSTR="$STR"
+    	SES=${SES##*/}
+
+        # Find anatomical scans
+		if [[ -e "${BASE}/${SUB}/${SES}/anat" ]]; then
+			SSTR="$SSTR  anat:"
+		else
+			SSTR="$SSTR       "
+		fi
+
+        NUM_T1W=$(2>/dev/null ls -1 ${BASE}/${SUB}/${SES}/anat/${SUB}_${SES}_*T1w.nii.gz | wc -l)
+        SSTR="$SSTR ${NUM_T1W}"
+
+        NUM_T2W=$(2>/dev/null ls -1 ${BASE}/${SUB}/${SES}/anat/${SUB}_${SES}_*T2w.nii.gz | wc -l)
+        SSTR="$SSTR  ${NUM_T2W}"
+
+        # Find diffusion scans
+		if [[ -e "${BASE}/${SUB}/${SES}/dwi" ]]; then
+			SSTR="$SSTR - dwi:"
+		else
+			SSTR="$SSTR -     "
+		fi
+
+        NUM_DWI=$(2>/dev/null ls -1 ${BASE}/${SUB}/${SES}/dwi/${SUB}_${SES}_*dwi.nii.gz | wc -l)
+        SSTR="$SSTR ${NUM_DWI}"
+
+        NUM_BVAL=$(2>/dev/null ls -1 ${BASE}/${SUB}/${SES}/dwi/${SUB}_${SES}_*dwi.bval | wc -l)
+        SSTR="$SSTR+${NUM_BVAL}"
+
+        NUM_BVEC=$(2>/dev/null ls -1 ${BASE}/${SUB}/${SES}/dwi/${SUB}_${SES}_*dwi.bvec | wc -l)
+        SSTR="$SSTR+${NUM_BVEC}"
+
+        # Find field maps
+		if [[ -e "${BASE}/${SUB}/${SES}/fmap" ]]; then
+			SSTR="$SSTR - fmap:"
+		else
+			SSTR="$SSTR -      "
+		fi
+
+        NUM_FMAP=$(2>/dev/null ls -1 ${BASE}/${SUB}/${SES}/fmap/${SUB}_${SES}_*.nii.gz | wc -l)
+        SSTR="$SSTR ${NUM_FMAP}"
+
+        # Find functional scans
+		if [[ -e "${BASE}/${SUB}/${SES}/func" ]]; then
+			SSTR="$SSTR - func:"
+		else
+			SSTR="$SSTR -      "
+		fi
+
+        NUM_REST=$(2>/dev/null ls -1 ${BASE}/${SUB}/${SES}/func/${SUB}_${SES}_*task-rest*.nii.gz | wc -l)
+        SSTR="$SSTR ${NUM_REST}"
+
+        NUM_ALL=$(2>/dev/null ls -1 ${BASE}/${SUB}/${SES}/func/${SUB}_${SES}_*task-*.nii.gz | wc -l)
+        NUM_TASK=$(( $NUM_ALL - $NUM_REST ))
+        SSTR="$SSTR ${NUM_TASK}"
+
+		echo "$SSTR"
+	done
+done
+
+echo "Found $NUM_SUBS subjects in '$BASE'."
+echo "$NUM_5SUBS start with 5. $NUM_7SUBS start with 7."
