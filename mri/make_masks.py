@@ -34,7 +34,7 @@ def get_arguments():
                 'short' abbreviates the original name""",
     )
     parser.add_argument(
-        "--atlas-threshold", default="50",
+        "--atlas-threshold", default="0",
         help="""Which atlas ROI probability threshold to use for masks
                 0, 25, or 50 for HarvardOxford""",
     )
