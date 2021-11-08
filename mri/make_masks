@@ -1,5 +1,28 @@
 #!/usr/bin/env python3
 
+"""Make region-specific binary masks from an atlas.
+
+This script allows the user to specify an atlas and generate a separate
+mask from each numbered region within the atlas. It can also combine those
+single-ROI masks with an additional binary mask to AND them together,
+resulting in a mask file for each region with only the voxels both
+in-region and in the separate mask.
+
+Usage:
+
+    make_masks
+
+Running the command alone uses all defaults, which is identical to fully
+specifying the following command:
+
+    make_masks --atlas HarvardOxford --space MNI152NLin2009cAsym \
+               --labels long --atlas-threshold 0 --resolution 2 --output-dir .
+
+For more, use the help.
+
+    make_masks --help
+"""
+
 import os
 import xml.etree.ElementTree as ET
 import argparse
@@ -8,17 +31,19 @@ import subprocess
 
 
 def get_arguments():
-    """ Parse the command-line arguments. """
+    """ Parse the command-line arguments.
+    """
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "atlas", default="HarvardOxford",
+        "--atlas", default="HarvardOxford",
         help="""The atlas to use
                 (only HarvardOxford is supported)""",
     )
     parser.add_argument(
-        "space", default="MNI152NLin2009cAsym",
+        "--space", default="MNI152NLin2009cAsym",
         help="""The MNI space to use
-                MNI152NLin2009cAsym for fMRIPrep,
+                MNI152NLin2009cAsym for fMRIPrep v2.20,
                 MNI152NLin6Sym for FSL and ABCD""",
     )
     parser.add_argument(
@@ -48,11 +73,13 @@ def get_arguments():
         help="""Where should the masks be written?
                 default to current directory""",
     )
+
     return parser.parse_args()
 
 
 def get_labels(label_xml):
-    """ Return label dictionary from xml file provided. """
+    """ Return label dictionary from xml file provided.
+    """
 
     if os.path.isfile(label_xml):
         tree = ET.parse(label_xml)
@@ -90,7 +117,8 @@ def get_labels(label_xml):
 
 
 def make_pure_mask(atlas, id, output_file):
-    """ Just execute the fsl command to extract one ROI mask. """
+    """ Just execute the fsl command to extract one ROI mask.
+    """
 
     print(f"from {atlas.get('atlas')}")
     command = [
@@ -106,7 +134,8 @@ def make_pure_mask(atlas, id, output_file):
 
 
 def combine_masks(mask_a, mask_b, output_path):
-    """ Combine two binary masks AND-wise for a combination mask. """
+    """ Combine two binary masks AND-wise for a combination mask.
+    """
 
     print(f"combined with {mask_b}.")
     command = [
@@ -120,7 +149,8 @@ def combine_masks(mask_a, mask_b, output_path):
 
 
 def make_filters(args, atlases):
-    """ Orchestrate the creation of separate masks for each region in atlas. """
+    """ Orchestrate the creation of separate masks for each region in atlas.
+    """
 
     for atlas in atlases:
         print(f"Extracting masks from {atlas['label_xml'][:-4]} atlas...")
@@ -131,7 +161,9 @@ def make_filters(args, atlases):
 
             print("  #{}. {}".format(id, label.get(args.labels)), end=" ")
 
-            mask_path = os.path.join(args.output_dir, label.get(args.labels) + ".nii.gz")
+            mask_path = os.path.join(
+                args.output_dir, label.get(args.labels) + ".nii.gz"
+            )
 
             # The raw ROI mask must be created in all cases.
             make_pure_mask(atlas, id, mask_path)
@@ -141,22 +173,33 @@ def make_filters(args, atlases):
                 # Clean up old full atlas mask, no longer needed.
                 # os.remove(full_mask_path)
 
+
+def atlas_file(atlas, subtype, threshold, resolution):
+    """ Return the filename corresponding to the arguments provided.
+    """
+
+    return "{a}/{a}-{st}-maxprob-thr{thr}-{res}mm.nii.gz".format(
+        a=atlas, st=subtype, thr=threshold, res=resolution
+    )
+
+
 def main(args):
     if args.atlas == "HarvardOxford":
         basepath = os.path.join(
             os.environ['FSLDIR'], "data", "atlases"
         )
-        atlas_spec = f"maxprob-thr{args.atlas_threshold}-{args.resolution}mm"
         if args.space == "MNI152NLin6Sym":
             filters = [
                 {
                     "basepath": basepath,
-                    "atlas": f"{args.atlas}/{args.atlas}-cort-{atlas_spec}.nii.gz",
+                    "atlas": atlas_file(args.atlas, "cort",
+                                        args.atlas_threshold, args.resolution),
                     "label_xml": "HarvardOxford-Cortical.xml",
                 },
                 {
                     "basepath": basepath,
-                    "atlas": f"{args.atlas}/{args.atlas}-sub-{atlas_spec}.nii.gz",
+                    "atlas": atlas_file(args.atlas, "sub",
+                                        args.atlas_threshold, args.resolution),
                     "label_xml": "HarvardOxford-Subcortical.xml",
                 },
             ]
@@ -164,12 +207,14 @@ def main(args):
             filters = [
                 {
                     "basepath": basepath,
-                    "atlas": f"{args.atlas}/{args.atlas}-HOCPAL-{atlas_spec}.nii.gz",
+                    "atlas": atlas_file(args.atlas, "HOCPAL",
+                                        args.atlas_threshold, args.resolution),
                     "label_xml": "HarvardOxford-Cortical-Lateralized.xml",
                 },
                 {
                     "basepath": basepath,
-                    "atlas": f"{args.atlas}/{args.atlas}-HOSPA-{atlas_spec}.nii.gz",
+                    "atlas": atlas_file(args.atlas, "HOSPA",
+                                        args.atlas_threshold, args.resolution),
                     "label_xml": "HarvardOxford-Subcortical.xml",
                 },
             ]
