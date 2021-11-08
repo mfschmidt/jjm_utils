@@ -137,13 +137,12 @@ def make_pure_mask(atlas, id, output_file):
     """
 
     print(f"from {atlas.get('atlas').split('/')[-1].split('.')[0]}")
-    # temp_file = pathlib.Path(output_file).parent / f"tmp_{id}.nii.gz"
+
     extract_command = [
         os.path.join(os.environ["FSLDIR"], "bin", "fslmaths"),
         os.path.join(atlas["basepath"], atlas["atlas"]),
         "-thr", str(id), "-uthr", str(id), output_file,
     ]
-    # print(" ".join(command))
     extract_proc = subprocess.run(
         extract_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
@@ -153,13 +152,10 @@ def make_pure_mask(atlas, id, output_file):
         os.path.join(os.environ["FSLDIR"], "bin", "fslmaths"),
         output_file, "-bin", output_file, "-odt", "char",
     ]
-    # print(" ".join(command))
     ones_proc = subprocess.run(
         ones_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
     print_proc_if_needed(ones_proc)
-
-    # os.remove(temp_file)
 
 
 def combine_masks(mask_a, mask_b, output_path):
@@ -167,12 +163,11 @@ def combine_masks(mask_a, mask_b, output_path):
     """
 
     print(f"       combined with {mask_b.split('/')[-1]}.")
-    # temp_file = pathlib.Path(output_path) / f"tmp_{id}.nii.gz"
+
     combine_command = [
         os.path.join(os.environ["FSLDIR"], "bin", "fslmaths"),
         mask_a, "-mul", mask_b, output_path,
     ]
-    # print(" ".join(command))
     combine_proc = subprocess.run(
         combine_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
@@ -182,7 +177,6 @@ def combine_masks(mask_a, mask_b, output_path):
         os.path.join(os.environ["FSLDIR"], "bin", "fslmaths"),
         output_path, "-bin", output_path, "-odt", "char",
     ]
-    # print(" ".join(command))
     bin_proc = subprocess.run(
         bin_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
@@ -211,8 +205,6 @@ def make_filters(args, atlases):
             # Only in some cases should we overwrite it with a threshold map.
             if args.contrast_map != "":
                 combine_masks(mask_path, args.contrast_map, mask_path)
-                # Clean up old full atlas mask, no longer needed.
-                # os.remove(full_mask_path)
 
 
 def atlas_file(atlas, subtype, threshold, resolution):
