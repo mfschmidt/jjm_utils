@@ -24,6 +24,7 @@ For more, use the help.
 """
 
 import os
+import sys
 import xml.etree.ElementTree as ET
 import argparse
 import errno
