@@ -79,6 +79,11 @@ def get_arguments():
 
 def get_labels(label_xml):
     """ Return label dictionary from xml file provided.
+
+    :param label_xml: The path to the xml label file, usually from FSL
+    :type label_xml: str
+    :returns: a list of dictionaries, one for each label
+    :rtype: list
     """
 
     if os.path.isfile(label_xml):
@@ -218,6 +223,13 @@ def main(args):
                     "label_xml": "HarvardOxford-Subcortical.xml",
                 },
             ]
+        else:
+            print("Only two spaces are currently supported:")
+            print("  - MNI152NLin2009cAsym: (97, 115, 97)")
+            print("  - MNI152NLin6Sym: (91, 109, 91)")
+            print(f"Your choice, '{args.space}', is not recognized.")
+            sys.exit(1)
+            
         make_filters(args, filters)
     else:
         print("Only HarvardOxford is currently supported.")
