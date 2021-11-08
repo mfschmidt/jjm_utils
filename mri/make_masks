@@ -25,6 +25,7 @@ For more, use the help.
 
 import os
 import sys
+import pathlib
 import xml.etree.ElementTree as ET
 import argparse
 import errno
@@ -122,36 +123,70 @@ def get_labels(label_xml):
     return None
 
 
+def print_proc_if_needed(proc):
+    """ If a subprocess output anything, print it. """
+
+    if len(proc.stdout) > 0:
+        print("    stdout: '" + proc.stdout.decode("utf-8")  + "'")
+    if len(proc.stderr) > 0:
+        print("    stderr: '" + proc.stderr.decode("utf-8")  + "'")
+
+
 def make_pure_mask(atlas, id, output_file):
     """ Just execute the fsl command to extract one ROI mask.
     """
 
-    print(f"from {atlas.get('atlas')}")
-    command = [
+    print(f"from {atlas.get('atlas').split('/')[-1].split('.')[0]}")
+    # temp_file = pathlib.Path(output_file).parent / f"tmp_{id}.nii.gz"
+    extract_command = [
         os.path.join(os.environ["FSLDIR"], "bin", "fslmaths"),
         os.path.join(atlas["basepath"], atlas["atlas"]),
-        "-thr", str(id), "-uthr", str(id),
-        output_file,
+        "-thr", str(id), "-uthr", str(id), output_file,
     ]
     # print(" ".join(command))
-    proc_mask = subprocess.run(
-        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    extract_proc = subprocess.run(
+        extract_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
+    print_proc_if_needed(extract_proc)
+
+    ones_command = [
+        os.path.join(os.environ["FSLDIR"], "bin", "fslmaths"),
+        output_file, "-bin", output_file, "-odt", "char",
+    ]
+    # print(" ".join(command))
+    ones_proc = subprocess.run(
+        ones_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    print_proc_if_needed(ones_proc)
+
+    # os.remove(temp_file)
 
 
 def combine_masks(mask_a, mask_b, output_path):
     """ Combine two binary masks AND-wise for a combination mask.
     """
 
-    print(f"combined with {mask_b}.")
-    command = [
+    print(f"       combined with {mask_b.split('/')[-1]}.")
+    # temp_file = pathlib.Path(output_path) / f"tmp_{id}.nii.gz"
+    combine_command = [
         os.path.join(os.environ["FSLDIR"], "bin", "fslmaths"),
         mask_a, "-mul", mask_b, output_path,
     ]
     # print(" ".join(command))
-    proc_hotmask = subprocess.run(
-        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    combine_proc = subprocess.run(
+        combine_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
+    print_proc_if_needed(combine_proc)
+
+    bin_command = [
+        os.path.join(os.environ["FSLDIR"], "bin", "fslmaths"),
+        output_path, "-bin", output_path, "-odt", "char",
+    ]
+    # print(" ".join(command))
+    bin_proc = subprocess.run(
+        bin_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    print_proc_if_needed(bin_proc)
 
 
 def make_filters(args, atlases):
