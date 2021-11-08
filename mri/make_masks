@@ -193,7 +193,7 @@ def main(args):
         basepath = os.path.join(
             os.environ['FSLDIR'], "data", "atlases"
         )
-        if args.space == "MNI152NLin6Sym":
+        if args.space.lower() == "MNI152NLin6Sym".lower():
             filters = [
                 {
                     "basepath": basepath,
@@ -208,7 +208,7 @@ def main(args):
                     "label_xml": "HarvardOxford-Subcortical.xml",
                 },
             ]
-        elif args.space == "MNI152NLin2009cAsym":
+        elif args.space.lower() == "MNI152NLin2009cAsym".lower():
             filters = [
                 {
                     "basepath": basepath,
@@ -229,7 +229,7 @@ def main(args):
             print("  - MNI152NLin6Sym: (91, 109, 91)")
             print(f"Your choice, '{args.space}', is not recognized.")
             sys.exit(1)
-            
+
         make_filters(args, filters)
     else:
         print("Only HarvardOxford is currently supported.")
