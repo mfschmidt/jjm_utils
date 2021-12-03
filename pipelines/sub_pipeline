@@ -42,7 +42,9 @@ def retrieve_user_settings(pipeline, verbose=False):
 
 
 def settle_memory(args):
-    """ Convert memory specs. """
+    """ Convert memory specs.
+        Different pipelines want different keys, make all available.
+    """
     if args.memory_mb is None and args.memory_gb is None:
         # Default memory settings
         # FreeSurfer docs request 8GB, this should be overkill.
@@ -480,7 +482,6 @@ def get_mriqc_singularity_arguments(args):
     return " \\\n".join([
         "  /rawdata /out participant",
         f"  -w /work --participant-label {args.subject}",
-        "  --fs-license-file /opt/freesurfer/license.txt",
         f"  --nprocs {args.num_threads}",
         f"  --mem_gb {args.memory_gb}",
     ])
