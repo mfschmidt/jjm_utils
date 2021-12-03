@@ -18,3 +18,4 @@ will do the rest (assuming keys are configured in ~/.ssh/config).
 or, to do several at a time,
 
     for NODE in jjm5 jjm6; do update_and_install.sh ${NODE}; done
+
