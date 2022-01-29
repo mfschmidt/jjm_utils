@@ -1,6 +1,6 @@
 ---
 - name: Install slurm to cluster
-  hosts: cluster
+  hosts: "*"
   remote_user: aa
   become: yes
   become_method: sudo

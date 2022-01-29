@@ -1,0 +1,46 @@
+127.0.0.1 localhost
+127.0.1.1 {HOSTNAME}
+
+# Cluster node addresses
+10.20.193.30 jjm1
+10.20.193.31 jjm2
+10.20.193.32 jjm3
+10.20.193.33 jjm4
+10.20.193.34 jjm5
+10.20.193.35 jjm6
+10.20.193.36 jjm7
+10.20.193.37 jjm8
+10.20.193.38 jjm9
+10.20.193.39 jjm10
+10.20.193.40 jjm11
+10.20.193.41 jjm12
+10.20.193.42 jjm13
+10.20.193.214 jjm14
+10.20.193.215 jjm15
+10.20.193.216 jjm16
+10.20.193.217 jjm17
+10.20.193.218 jjm18
+
+# HPE iLO addresses
+10.20.193.42 ilo1
+10.20.193.43 ilo2
+10.20.193.44 ilo3
+10.20.193.45 ilo4
+10.20.193.46 ilo5
+10.20.193.47 ilo6
+10.20.193.48 ilo7
+10.20.193.49 ilo8
+10.20.193.49 ilo9
+10.20.193.52 ilo11
+10.20.193.54 ilo12
+10.20.193.111 ilo13
+10.20.193.112 ilo14
+10.20.193.113 ilo15
+10.20.193.114 ilo16
+
+# The following lines are desirable for IPv6 capable hosts
+::1     ip6-localhost ip6-loopback
+fe00::0 ip6-localnet
+ff00::0 ip6-mcastprefix
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters

@@ -1,6 +1,6 @@
 ---
 - name: Set timezone to Americas/New_York
-  hosts: all
+  hosts: "*"
   remote_user: aa
   become: yes
   become_method: sudo
