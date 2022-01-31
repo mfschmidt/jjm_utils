@@ -15,7 +15,7 @@
 apt update
 apt upgrade -y
 apt autoremove -y
-apt install gnupg vim sshpass ansible nfs-kernel-server nfs-common -y
+apt install zip unzip git gnupg vim sshpass python2 python3 ansible nfs-kernel-server nfs-common -y
 
 
 # Check on fstab and update it if necessary.
@@ -63,4 +63,16 @@ cp /home/aa/jjm_utils/data/hosts /etc/hosts
 sed -i "s/{HOSTNAME}/$(hostname)/g" /etc/hosts
 chown aa:aa /home/aa/jjm_utils --recursive
 
+# Install FSL
+mkdir -p /opt/fsl
+cd /opt/fsl
+wget https://fsl.fmrib.ox.ac.uk/fsldownloads/fslinstaller.py
+python2 /opt/fsl/fslinstaller.py -q
+
+# Install Connectome Workbench
+mkdir -p /opt/
+cd /opt/
+wget https://www.humanconnectome.org/storage/app/media/workbench/workbench-linux64-v1.5.0.zip
+unzip workbench-linux64-v1.5.0.zip
+ln -s /opt/workbench/bin_linux64/wb_command /usr/local/bin/wb_command
 
