@@ -40,4 +40,5 @@
         - tmux
         - reptyr
         - git
+        - libglu1-mesa
 
