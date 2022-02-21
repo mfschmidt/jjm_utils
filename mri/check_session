@@ -427,7 +427,3 @@ def main(args):
 
 if __name__ == "__main__":
     sys.exit(main(get_arguments()))
-
-# TODO: Report extraneous fieldmap intendedfors
-# TODO: Implement fix
-# TODO: Check TaskName and implement its fix.
