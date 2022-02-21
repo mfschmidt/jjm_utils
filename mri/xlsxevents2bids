@@ -1,0 +1,217 @@
+#!/usr/bin/env python3
+
+# xlsxevents2bids
+
+import sys
+import pathlib
+import argparse
+import re
+from collections import namedtuple
+import pandas as pd
+
+"""
+For details on the target output, see
+https://bids-specification.readthedocs.io/en/stable/04-modality-specific-files/05-task-events.html
+
+The goal of this script is to input an xlsx spreadsheet from ePrime
+then format the appropriate data into BIDS format for analyses.
+"""
+
+# Store trial features in one clean object per trial.
+Event = namedtuple(
+    'Event',
+    " ".join(['trial_type', 'onset', 'duration',
+              'value', 'response', 'response_time', ])
+)
+
+""" Different experiments differ too much to make this purely
+    data driven. We go into this knowing that each of four
+    blocks will have a MemCue, followed by an Instruct cue,
+    followed by two QTexts, followed by bunches of Arrows.
+"""
+mem_events = [
+    Event(
+        trial_type="memory",
+        onset="MemCue.OnsetTime", duration="MemCue.OnsetToOnsetTime",
+        value="MemCue", response="MemCue.RESP", response_time="MemCue.RT",
+    ),
+    Event(
+        trial_type="instruct",
+        onset="Instruct.OnsetTime", duration="Instruct.OnsetToOnsetTime",
+        value="Word", response="Instruct.RESP", response_time="Instruct.RT",
+    ),
+    Event(
+        trial_type="question",
+        onset="QText.OnsetTime", duration="QText.OnsetToOnsetTime",
+        value="Question", response="QText.RESP", response_time="QText.RT",
+    ),
+    Event(
+        trial_type="arrow",
+        onset="Arrow.OnsetTime", duration="Arrow.OnsetToOnsetTime",
+        value="Arrow", response="Arrow.RESP", response_time="Arrow.RT",
+    ),
+]
+
+
+def events_dict(row, e, b):
+    """ Map a Series, 'row', via an Event, e, for block b into a dict.
+
+        'onset' and 'duration' are required by BIDS
+        'trial_type' is optional, but necessary for these experiments
+        'value' is optional
+        'response_time' is optional
+        'response' is not mentioned in BIDS docs, but extras are allowed.
+    """
+
+    blk_marker = f"SynchWithScanner{b}.OffsetTime"
+    return {
+        "trial_type": e.trial_type,
+        "onset": (float(row[e.onset]) - float(row[blk_marker])) / 1000.0,
+        "duration": float(row[e.duration]) / 1000.0,
+        "value": row[e.value],
+        "response": row[e.response],
+        "response_time": float(row[e.response_time]) / 1000.0,
+    }
+
+
+def get_path_components(path):
+    """ From the path provided, detect base, subject, and session.
+    """
+
+    full_path = pathlib.Path(path)
+    matches = re.search(
+        r"(/.*)/sub-(U[\d]+)/ses-([\d]+)/([a-z]+)/.+[\.].+",
+        str(full_path.resolve())
+    )
+    if matches:
+        base = matches.group(1)
+        sub = matches.group(2)
+        ses = matches.group(3)
+        modality = matches.group(3)
+    else:
+        print(f"failed to match to '{str(full_path.resolve())}'")
+        base, sub, ses, modality = None, None, None, None
+
+    images = [img.name for img in full_path.parent.glob(
+        full_path.name.replace("_events.tsv", "*.nii.gz")
+    )]
+
+    return base, sub, ses, modality, images
+
+
+def get_memory_events(input_path, images):
+    """ Read input_path, format it to our needs, and return it as a dataframe.
+    """
+
+    # Read the data, but ignore the first row of each file.
+    # It just contains a path. Row 2 is the header.
+    data = pd.read_excel(input_path, skiprows=1)
+
+    blocks = sorted(data['Procedure[Block]'].unique())
+    print(f"Found {len(images)} runs and {len(blocks)} blocks.")
+    if len(images) != len(blocks):
+        print("ERROR: We must have the same number of runs and blocks.")
+        return None
+
+    dataframes = []
+    for blk, img in zip(sorted(blocks), sorted(images)):
+        block_data = data[data["Procedure[Block]"] == blk]
+        blk_id = blk[-1]
+        blk_marker = f"SynchWithScanner{blk_id}.OffsetTime"
+
+        # Each block/run gets a new clean list of events.
+        block_events = []
+        for event in mem_events:
+            columns = [blk_marker,
+                       event.onset, event.duration, event.value,
+                       event.response, event.response_time, ]
+            trial_data = (
+                block_data[columns]
+                .groupby(columns, dropna=False,)
+                .agg('nunique')
+                .reset_index()
+            )
+            block_events = block_events + list(
+                trial_data[trial_data[event.onset].notnull()].apply(
+                    events_dict, args=(event, blk_id), axis=1,
+                )
+            )
+
+        dataframes.append(pd.DataFrame(block_events).sort_values("onset"))
+
+    return dataframes
+
+
+def get_arguments():
+    """ Define and parse command line arguments.
+    """
+
+    parser = argparse.ArgumentParser(
+        description="""
+            Read input ePrime spreadsheet and write out the relevant
+            data as BIDS-compatible events.tsv file.
+            For more detail, use --verbose.
+        """,
+    )
+    parser.add_argument(
+        "input",
+        help="The path to ePrime provided timing xlsx spreadsheet",
+    )
+    parser.add_argument(
+        "output",
+        help="The path to the BIDS-compatible tsv events file",
+    )
+    parser.add_argument(
+        "--safe", action="store_true",
+        help="Do not overwrite existing events.tsv file.",
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="set to trigger verbose output",
+    )
+
+    return parser.parse_args()
+
+
+def main(args):
+    """ Entry point """
+
+    p_in = pathlib.Path(args.input)
+    p_out = pathlib.Path(args.output)
+    if args.verbose:
+        print(f"Reading '{p_in.name}'")
+        print(f"   from '{p_in.parent}'")
+        # print(f"Writing '{p_out.name}'")
+        # print(f"     to '{p_out.parent}'")
+
+    if not pathlib.Path(args.input).exists():
+        print(f"The provided path, '{args.input}', does not exist.")
+        return 1
+
+    base, sub, ses, modality, images = get_path_components(args.output)
+    if args.verbose:
+        print(f"Recognized subject '{sub}', session '{ses}', from '{base}'")
+
+    # This code only handles memory trials; images come later.
+    if "memory" in str(args.input):
+        events_dataframes = get_memory_events(args.input, images)
+    else:
+        print("ERROR: Unsupported trial type. Only 'memory' trials are coded.")
+        return 1
+
+    for image, dataframe in zip(sorted(images), events_dataframes):
+        out_file = p_out.parent / image.replace("_bold.nii.gz", "_events.tsv")
+        if args.safe and out_file.exists():
+            print(f"  skipped {out_file.name}; it exists and --safe is on.")
+        else:
+            if args.verbose:
+                print(f"  found {dataframe.shape[0]} events in block.")
+            print(f"    writing {out_file.name}")
+            dataframe.to_csv(out_file, sep="\t", index=False)
+
+    # Nothing died, return a success code.
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(get_arguments()))
