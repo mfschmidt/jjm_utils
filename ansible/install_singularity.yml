@@ -1,6 +1,6 @@
 ---
 - name: Install singularity prerequisites to all cluster nodes
-  hosts: cluster
+  hosts: "*"
   remote_user: aa
   become: yes
   become_method: sudo
@@ -43,14 +43,15 @@
 
   - name: Download go if necessary
     get_url:
-      url: https://golang.org/dl/go1.16.5.linux-amd64.tar.gz
-      dest: /home/aa/go1.16.5.linux-amd64.tar.gz
+      url: https://golang.org/dl/go1.17.6.linux-amd64.tar.gz
+      dest: /home/aa/go1.17.6.linux-amd64.tar.gz
 
   - name: Install go to /usr/local/go
     unarchive:
-      src: /home/aa/go1.16.5.linux-amd64.tar.gz
+      src: /home/aa/go1.17.6.linux-amd64.tar.gz
       dest: /usr/local
       creates: /usr/local/go/bin/go
+      remote_src: no
   
   - name: Remove old go links
     file:
@@ -72,7 +73,7 @@
       
     
 - name: Install singularity to all cluster nodes
-  hosts: cluster
+  hosts: "*"
   serial: 1
   remote_user: aa
   become: yes
@@ -80,20 +81,20 @@
 
   - name: Download Singularity
     get_url:
-      url: "https://github.com/sylabs/singularity/releases/download/v3.8.0/singularity-ce-3.8.0.tar.gz"
+      url: "https://github.com/sylabs/singularity/releases/download/v3.9.2/singularity-ce-3.9.2.tar.gz"
       dest: /home/aa/
 
   - name: Extract Singularity
     unarchive:
-            src: /home/aa/singularity-ce-3.8.0.tar.gz
+            src: /home/aa/singularity-ce-3.9.2.tar.gz
             dest: /tmp
             remote_src: yes
 
   - name: Make and install singularity
     become: yes
-    shell: ./mconfig && cd ./builddir && make && sudo make install
+    shell: ./mconfig && make -C ./builddir && sudo make -C ./builddir install
     args:
       executable: /bin/bash
-      chdir: /tmp/singularity-ce-3.8.0
+      chdir: /tmp/singularity-ce-3.9.2
       
 
