@@ -462,14 +462,14 @@ def get_singularity_command(args):
     base_command = [
         "singularity run --cleanenv",
         f"  -B {args.rawdata}:/rawdata:ro",
-        f"  -B {args.staging_directory}:/out",  # may be {derivatives}
+        f"  -B {args.staging_directory}:/out",
+        "  -B /data:/data:ro",
     ]
     if args.pipeline != "freesurfer":
         base_command += [
             f"  -B {args.work_directory}:/work",
             f"  -B {args.templateflow_directory}:/opt/templateflow",
             f"  -B {args.freesurfer_license}:/opt/freesurfer/license.txt",
-            "  -B /data:/data:ro",
         ]
     base_command += [
         f"  {args.sif_file}",
