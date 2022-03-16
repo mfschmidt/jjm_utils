@@ -1,0 +1,15 @@
+---
+- name: Create users from list
+  hosts: "*"
+  tasks:
+  
+  - name: Read user list
+    read_csv:
+      path: /home/aa/users.csv
+    register: user_list
+    delegate_to: localhost
+
+  - name: Display user list
+    debug:
+      var: user_list.list
+
