@@ -1,7 +1,7 @@
 ---
 - name: Open up local munge.key for copying
   hosts: heads
-  become: yes
+  become: true
   become_method: sudo
   become_user: root
   tasks:
@@ -18,7 +18,7 @@
 - name: Open up remote munge keys for copying
   hosts: nodes
   remote_user: aa
-  become: yes
+  become: true
   become_method: sudo
   become_user: root
   tasks:
@@ -34,7 +34,7 @@
 - name: Update slurm nodes to match controller
   hosts: nodes
   remote_user: aa
-  become: yes
+  become: true
   become_method: sudo
   become_user: root
   tasks:
@@ -50,7 +50,7 @@
 - name: Lock up remote munge.key access
   hosts: nodes
   remote_user: aa
-  become: yes
+  become: true
   become_method: sudo
   become_user: root
   tasks:
@@ -62,7 +62,7 @@
 
 - name: Close local munge.key access
   hosts: heads
-  become: yes
+  become: true
   become_method: sudo
   become_user: root
   tasks:

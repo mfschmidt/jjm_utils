@@ -2,7 +2,7 @@
 - name: Update slurm nodes to match controller
   hosts: nodes
   remote_user: aa
-  become: yes
+  become: true
   become_method: sudo
   become_user: root
   tasks:

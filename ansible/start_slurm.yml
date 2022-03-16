@@ -2,7 +2,7 @@
 - name: Start the slurmd service on all nodes.
   hosts: heads,nodes
   remote_user: aa
-  become: yes
+  become: true
   become_method: sudo
   become_user: root
   tasks:
@@ -15,12 +15,12 @@
 - name: Start the slurmctld service on head nodes.
   hosts: heads
   remote_user: aa
-  become: yes
+  become: true
   become_method: sudo
   become_user: root
   tasks:
 
-  - name: Start slurmctld service
-    service:
-      name: slurmctld
-      state: started
+    - name: Start slurmctld service
+      service:
+        name: slurmctld
+        state: started
