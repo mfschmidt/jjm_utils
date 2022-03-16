@@ -11,13 +11,13 @@ if [[ "$1" != "" ]]; then
     fi
 fi
 SRC_FILES=\
-"pipelines/sub_{pipeline,fmriprep,qsiprep,mriqc,feat} \
+"pipelines/sub_{pipeline,fmriprep,qsiprep,mriqc,feat,freesurfer} \
  pipelines/cleanup_tmp.sh \
  pipelines/inventory_rawdata \
  mri/make_masks \
  confounds/filter_confounds.{py,sh}"
 TGT_FILES=\
-"${DEST}/sub_{pipeline,fmriprep,qsiprep,mriqc,feat} \
+"${DEST}/sub_{pipeline,fmriprep,qsiprep,mriqc,feat,freesurfer} \
  ${DEST}/cleanup_tmp.sh \
  ${DEST}/inventory_rawdata \
  ${DEST}/make_masks \
