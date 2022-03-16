@@ -469,6 +469,7 @@ def get_singularity_command(args):
             f"  -B {args.work_directory}:/work",
             f"  -B {args.templateflow_directory}:/opt/templateflow",
             f"  -B {args.freesurfer_license}:/opt/freesurfer/license.txt",
+            "  -B /data:/data:ro",
         ]
     base_command += [
         f"  {args.sif_file}",
@@ -562,13 +563,15 @@ def get_freesurfer_singularity_arguments(args, stage="recon"):
         ] + [
             f"  -sd /out -openmp {args.num_cpus}{cm_str} -all",
         ]
-    elif stage == "hippocampus":
+    elif stage == "hippocampus_t1":
         further_arguments = [f"  segmentHA_T1.sh sub-{args.subject} /out", ]
+    elif stage == "hippocampus_t2":
         if len(t2s) > 0:
-            further_arguments.append(
-                f"  segmentHA_T2.sh sub-{args.subject} "
-                f"{t2s[0].replace(args.rawdata, '/rawdata')} T2 1 /out"
-            )
+            inner_t2 = t2s[0].replace(args.rawdata, '/rawdata')
+            further_arguments = [
+                f"  segmentHA_T2.sh sub-{args.subject} {inner_t2} T2 1 /out",
+            ]
+
     elif stage == "brainstem":
         further_arguments = [f"  segmentBS.sh sub-{args.subject} /out", ]
     return " \\\n".join(further_arguments)
@@ -580,8 +583,21 @@ def get_freesurfer_addons(args):
 
     addons = [
         get_singularity_command(args) + " \\",
-        get_freesurfer_singularity_arguments(args, "hippocampus"),
-        failure_text("Hippocampal Subfields Segmentation", args),
+        get_freesurfer_singularity_arguments(args, "hippocampus_t1"),
+        failure_text("Hippocampal Subfields 1st Segmentation", args),
+    ]
+    subject_path = pathlib.Path(args.rawdata) / f"sub-{args.subject}"
+    if args.input_t2 == "":
+        t2s = [str(p) for p in subject_path.glob("**/*T2w.nii.gz")]
+    else:
+        t2s = [args.input_t2, ]
+    if len(t2s) > 0:
+        addons += [
+            get_singularity_command(args) + " \\",
+            get_freesurfer_singularity_arguments(args, "hippocampus_t2"),
+            failure_text("Hippocampal Subfields 2nd Segmentation", args),
+        ]
+    addons += [
         get_singularity_command(args) + " \\",
         get_freesurfer_singularity_arguments(args, "brainstem"),
         failure_text("Brainstem Nuclei Segmentation", args),
