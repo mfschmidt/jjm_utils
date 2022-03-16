@@ -20,6 +20,7 @@
         - gnupg2
         - sshpass
         - software-properties-common
+        - mailutils
 
   - name: Install slurm-wlm
     apt:
@@ -29,4 +30,3 @@
       packages:
         - munge
         - slurm-wlm
-

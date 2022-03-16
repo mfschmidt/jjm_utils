@@ -1,6 +1,6 @@
 ---
 - name: Open up local munge.key for copying
-  hosts: jjm7
+  hosts: heads
   become: yes
   become_method: sudo
   become_user: root
@@ -61,7 +61,7 @@
                     mode: '0700'
 
 - name: Close local munge.key access
-  hosts: jjm7
+  hosts: heads
   become: yes
   become_method: sudo
   become_user: root
@@ -76,4 +76,3 @@
             file:
                     path: '/etc/munge'
                     mode: '0700'
-
