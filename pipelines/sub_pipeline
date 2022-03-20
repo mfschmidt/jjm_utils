@@ -432,6 +432,7 @@ def get_batch_header(args):
     """ Return the header with SLURM variables to the sbatch file.
     """
     tf_env = "SINGULARITYENV_TEMPLATEFLOW_HOME"
+    mpl_env = "MPLCONFIGDIR"
     return "\n".join([
         "#!/bin/bash",
         "",
@@ -444,10 +445,12 @@ def get_batch_header(args):
         f"#SBATCH --mem={args.memory_mb}",
         f"#SBATCH --chdir={args.tmp_root}",
         f"#SBATCH --export={tf_env}={args.tmp_root}/templateflow",
+        f"#SBATCH --export={mpl_env}={args.tmp_root}/matplotlib",
         "",
         f"mkdir -p {args.work_directory}",
         f"mkdir -p {args.templateflow_directory}",
         f"mkdir -p {args.staging_directory}",
+        f"mkdir -p {args.tmp_root}/matplotlib",
         "",
         "",
     ])
