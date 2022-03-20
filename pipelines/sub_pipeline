@@ -714,8 +714,8 @@ def write_batch_script(args):
         if args.pipeline == "mriqc":
             batch_file.write(
                 f"\n# Move reports into subject's sub-directory.\n"
-                f"mv {args.derivatives}/mriqc/sub-{args.subject}_*.html "
-                f"{args.derivatives}/mriqc/sub-{args.subject}/\n\n"
+                f"mv {args.derivatives}/sub-{args.subject}_*.html "
+                f"{args.derivatives}/sub-{args.subject}/\n\n"
             )
 
         batch_file.write(
