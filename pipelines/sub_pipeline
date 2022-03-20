@@ -162,6 +162,11 @@ def get_arguments():
         help="The path to read and write cached templateflow data",
     )
     parser.add_argument(
+        "--matplotlib-directory",
+        default=user_settings.get("matplotlib-directory"),
+        help="The path to read and write cached matplotlib data",
+    )
+    parser.add_argument(
         "--pipeline-version",
         default=user_settings.get("pipeline-version"),
         help="The version of the docker/singularity pipeline to run",
@@ -298,6 +303,10 @@ def get_arguments():
         setattr(args, "templateflow_directory", os.path.join(
             args.tmp_root, "templateflow"
         ))
+    if getattr(args, "matplotlib_directory") is None:
+        setattr(args, "matplotlib_directory", os.path.join(
+            args.tmp_root, "matplotlib"
+        ))
     if getattr(args, "slurm_partition") is None:
         setattr(args, "slurm_partition", args.pipeline)
 
@@ -432,7 +441,7 @@ def get_batch_header(args):
     """ Return the header with SLURM variables to the sbatch file.
     """
     tf_env = "SINGULARITYENV_TEMPLATEFLOW_HOME"
-    mpl_env = "MPLCONFIGDIR"
+    mpl_env = "SINGULARITYENV_MPLCONFIGDIR"
     return "\n".join([
         "#!/bin/bash",
         "",
@@ -444,13 +453,14 @@ def get_batch_header(args):
         f"#SBATCH --ntasks-per-node={args.num_threads}",
         f"#SBATCH --mem={args.memory_mb}",
         f"#SBATCH --chdir={args.tmp_root}",
-        f"#SBATCH --export={tf_env}={args.tmp_root}/templateflow",
-        f"#SBATCH --export={mpl_env}={args.tmp_root}/matplotlib",
+        "",
+        f"export {tf_env}=/opt/templateflow",
+        f"export {mpl_env}=/opt/matplotlib",
         "",
         f"mkdir -p {args.work_directory}",
         f"mkdir -p {args.templateflow_directory}",
+        f"mkdir -p {args.matplotlib_directory}",
         f"mkdir -p {args.staging_directory}",
-        f"mkdir -p {args.tmp_root}/matplotlib",
         "",
         "",
     ])
@@ -470,8 +480,9 @@ def get_singularity_command(args):
     ]
     if args.pipeline != "freesurfer":
         base_command += [
-            f"  -B {args.work_directory}:/work",
+            f"  -B {args.work_directory}:/work/",
             f"  -B {args.templateflow_directory}:/opt/templateflow",
+            f"  -B {args.matplotlib_directory}:/opt/matplotlib",
             f"  -B {args.freesurfer_license}:/opt/freesurfer/license.txt",
         ]
     base_command += [
@@ -485,8 +496,8 @@ def get_mriqc_singularity_arguments(args):
     """
     return " \\\n".join([
         "  /rawdata /out participant",
-        f"  -w /work --participant-label {args.subject}",
-        f"  --nprocs {args.num_threads}",
+        f"  --participant-label {args.subject} -w /work",
+        f"  --nprocs {args.num_threads} --omp-nthreads 8",
         f"  --mem_gb {args.memory_gb}",
     ])
 
@@ -496,7 +507,7 @@ def get_fmriprep_singularity_arguments(args):
     """
     further_arguments = [
         "  /rawdata /out participant",
-        f"  -w /work --participant-label {args.subject}",
+        f"  --participant-label {args.subject} -w /work/",
         "  --fs-license-file /opt/freesurfer/license.txt",
     ]
     if args.pipeline_version.startswith("1."):
@@ -522,7 +533,7 @@ def get_qsiprep_singularity_arguments(args):
     """
     further_arguments = [
         "  /rawdata /out participant",
-        f"  -w /work --participant-label {args.subject}",
+        f"  --participant-label {args.subject} -w /work/",
         "  --fs-license-file /opt/freesurfer/license.txt",
         f"  --output-resolution {args.output_resolution}",
         f"  --hmc-model {args.hmc_model}",
