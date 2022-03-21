@@ -11,6 +11,10 @@ if [[ ! -f $FSF ]]; then
         echo "$FSF is not a file, giving up."
         exit 1
 fi
+if [[ "$FSF" != "/"* ]]; then
+        echo "Converted local '$FSF' to absolute '$(pwd)/$FSF'"
+        FSF=$(pwd)/$FSF
+fi
 
 # Make sure we have a place to save stderr and stdout logs.
 mkdir -p ~/slurmlogs
