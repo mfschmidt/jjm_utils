@@ -42,11 +42,12 @@ echo "#SBATCH --job-name=feat_${CORES}" >> "$SCRIPT"
 echo "" >> "$SCRIPT"
 echo "mkdir -p ~/slurmlogs" >> "$SCRIPT"
 echo "" >> "$SCRIPT"
-echo "date; hostname; pwd" >> "$SCRIPT"
+echo "echo Begin; date; hostname; pwd" >> "$SCRIPT"
 echo "" >> "$SCRIPT"
 echo "$FSLDIR/bin/feat $FSF" >> "$SCRIPT"
 echo "" >> "$SCRIPT"
-echo "date" >> "$SCRIPT"
+echo "echo End; date" >> "$SCRIPT"
+echo "" >> "$SCRIPT"
 
 # Create the command to run feat, remembering that SLURM doesn't have the same
 # ENV that we do in a user shell.
