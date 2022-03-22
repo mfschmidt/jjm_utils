@@ -16,22 +16,38 @@ if [[ "$FSF" != "/"* ]]; then
         FSF=$(pwd)/$FSF
 fi
 
-# Make sure we have a place to save stderr and stdout logs.
-mkdir -p ~/slurmlogs
-
 # How many cores shall we allocate for this job?
 # feat just uses 1 for now
 CORES=4
 
+# Make sure we have a place to store the script we're about to write.
+mkdir -p ~/bin/slurm
+
+# Write a new sbatch script
+
+FSF_SHORT="${FSF##*/}"
+FSF_SHORT="${FSF_SHORT%%.*}"
+SCRIPT=~/bin/slurm/batch_sub-${FSF_SHORT}.sbatch
+
+echo "#!/bin/bash" > "$SCRIPT"
+echo "#SBATCH --job-name=feat_${CORES}" >> "$SCRIPT"
+echo "#SBATCH --nodes=1" >> "$SCRIPT"
+echo "#SBATCH --ntasks=1" >> "$SCRIPT"
+echo "#SBATCH --cpus-per-task=${CORES}" >> "$SCRIPT"
+echo "#SBATCH --mem=2gb" >> "$SCRIPT"
+echo "#SBATCH --time=0" >> "$SCRIPT"
+echo "#SBATCH --output=${HOME}/slurmlogs/feat-%j.out" >> "$SCRIPT"
+echo "#SBATCH --error=${HOME}/slurmlogs/feat-%j.out" >> "$SCRIPT"
+echo "#SBATCH --job-name=feat_${CORES}" >> "$SCRIPT"
+echo "" >> "$SCRIPT"
+echo "mkdir -p ~/slurmlogs" >> "$SCRIPT"
+echo "" >> "$SCRIPT"
+echo "date; hostname; pwd" >> "$SCRIPT"
+echo "" >> "$SCRIPT"
+echo "$FSLDIR/bin/feat $FSF" >> "$SCRIPT"
+echo "" >> "$SCRIPT"
+echo "date" >> "$SCRIPT"
+
 # Create the command to run feat, remembering that SLURM doesn't have the same
 # ENV that we do in a user shell.
-sbatch -J feat_${CORES} \
-        -p fsl6 \
-        -N 1-1 \
-        -c ${CORES} \
-        --mem 2048M \
-        -t 0 \
-        -o $HOME/slurmlogs/feat-%j.out -e $HOME/slurmlogs/feat-%j.out \
-        --export=OPENBLAS_NUM_THREADS=$CORES \
-        --export=FSLDIR=$FSLDIR \
-        $FSLDIR/bin/feat $FSF
+sbatch -p fsl6 --export=ALL,OPENBLAS_NUM_THREADS=$CORES $SCRIPT
