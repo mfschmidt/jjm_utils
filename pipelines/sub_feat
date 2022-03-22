@@ -20,35 +20,38 @@ fi
 # feat just uses 1 for now
 CORES=4
 
-# Make sure we have a place to store the script we're about to write.
-mkdir -p ~/bin/slurm
-
 # Write a new sbatch script
 
-FSF_SHORT="${FSF##*/}"
-FSF_SHORT="${FSF_SHORT%%.*}"
-SCRIPT=~/bin/slurm/batch_sub-${FSF_SHORT}.sbatch
+FSF_PATH="${FSF%/*}"
+FSF_FILE="${FSF##*/}"
+FSF_SHORT="${FSF_FILE%%.*}"
+SCRIPT=${FSF_PATH}/batch_${FSF_SHORT}.sh
 
-echo "#!/bin/bash" > "$SCRIPT"
-echo "#SBATCH --job-name=feat_${CORES}" >> "$SCRIPT"
-echo "#SBATCH --nodes=1" >> "$SCRIPT"
-echo "#SBATCH --ntasks=1" >> "$SCRIPT"
-echo "#SBATCH --cpus-per-task=${CORES}" >> "$SCRIPT"
-echo "#SBATCH --mem=2gb" >> "$SCRIPT"
-echo "#SBATCH --time=0" >> "$SCRIPT"
-echo "#SBATCH --output=${HOME}/slurmlogs/feat-%j.out" >> "$SCRIPT"
-echo "#SBATCH --error=${HOME}/slurmlogs/feat-%j.out" >> "$SCRIPT"
-echo "#SBATCH --job-name=feat_${CORES}" >> "$SCRIPT"
-echo "" >> "$SCRIPT"
-echo "mkdir -p ~/slurmlogs" >> "$SCRIPT"
-echo "" >> "$SCRIPT"
-echo "echo Begin; date; hostname; pwd" >> "$SCRIPT"
-echo "" >> "$SCRIPT"
-echo "$FSLDIR/bin/feat $FSF" >> "$SCRIPT"
-echo "" >> "$SCRIPT"
-echo "echo End; date" >> "$SCRIPT"
-echo "" >> "$SCRIPT"
+if [[ $FSF =~ (U[0-9]+) ]]; then
+        SUB=${BASH_REMATCH[1]}
+else
+        SUB=NA
+fi
 
-# Create the command to run feat, remembering that SLURM doesn't have the same
-# ENV that we do in a user shell.
-sbatch -p fsl6 --export=ALL,OPENBLAS_NUM_THREADS=$CORES $SCRIPT
+echo "#!/bin/bash"                                        > "$SCRIPT"
+echo "#SBATCH --job-name=feat_${SUB}_${CORES}"           >> "$SCRIPT"
+echo "#SBATCH --nodes=1"                                 >> "$SCRIPT"
+echo "#SBATCH --ntasks=1"                                >> "$SCRIPT"
+echo "#SBATCH --cpus-per-task=${CORES}"                  >> "$SCRIPT"
+echo "#SBATCH --mem=2gb"                                 >> "$SCRIPT"
+echo "#SBATCH --time=0"                                  >> "$SCRIPT"
+echo "#SBATCH --export=ALL,OPENBLAS_NUM_THREADS=$CORES"  >> "$SCRIPT"
+echo "#SBATCH --output=${HOME}/slurmlogs/feat-%j.out"    >> "$SCRIPT"
+echo "#SBATCH --error=${HOME}/slurmlogs/feat-%j.out"     >> "$SCRIPT"
+echo ""                                                  >> "$SCRIPT"
+echo "mkdir -p ~/slurmlogs"                              >> "$SCRIPT"
+echo ""                                                  >> "$SCRIPT"
+echo "echo Begin; date; hostname; pwd"                   >> "$SCRIPT"
+echo ""                                                  >> "$SCRIPT"
+echo "srun $FSLDIR/bin/feat $FSF"                        >> "$SCRIPT"
+echo ""                                                  >> "$SCRIPT"
+echo "echo End; date"                                    >> "$SCRIPT"
+echo ""                                                  >> "$SCRIPT"
+
+# Submit this script to slurm
+sbatch -p fsl6 "$SCRIPT"
