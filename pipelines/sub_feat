@@ -30,11 +30,11 @@ SCRIPT=${FSF_PATH}/batch_${FSF_SHORT}.sh
 if [[ $FSF =~ (U[0-9]+) ]]; then
         SUB=${BASH_REMATCH[1]}
 else
-        SUB=NA
+        SUB=_NA_
 fi
 
 echo "#!/bin/bash"                                        > "$SCRIPT"
-echo "#SBATCH --job-name=feat_${SUB}_${CORES}"           >> "$SCRIPT"
+echo "#SBATCH --job-name=feat${SUB: -4:4}_${CORES}"      >> "$SCRIPT"
 echo "#SBATCH --nodes=1"                                 >> "$SCRIPT"
 echo "#SBATCH --ntasks=1"                                >> "$SCRIPT"
 echo "#SBATCH --cpus-per-task=${CORES}"                  >> "$SCRIPT"
