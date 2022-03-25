@@ -474,6 +474,7 @@ def get_singularity_command(args):
     """
     base_command = [
         "singularity run --cleanenv",
+        "  -B /run/shm:/run/shm",
         f"  -B {args.rawdata}:/rawdata:ro",
         f"  -B {args.staging_directory}:/out",
         "  -B /data:/data:ro",
