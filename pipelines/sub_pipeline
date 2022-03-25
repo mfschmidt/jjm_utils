@@ -585,7 +585,17 @@ def get_freesurfer_singularity_arguments(args, stage="recon"):
             further_arguments = [
                 f"  segmentHA_T2.sh sub-{args.subject} {inner_t2} T2 1 /out",
             ]
-
+    elif stage == "thalamus_t1":
+        further_arguments = [
+            f"  segmentThalamicNuclei.sh sub-{args.subject} /out",
+        ]
+    elif stage == "thalamus_t2":
+        if len(t2s) > 0:
+            inner_t2 = t2s[0].replace(args.rawdata, '/rawdata')
+            further_arguments = [
+                f"  segmentThalamicNuclei.sh sub-{args.subject} "
+                f"{inner_t2} T2 1 /out",
+            ]
     elif stage == "brainstem":
         further_arguments = [f"  segmentBS.sh sub-{args.subject} /out", ]
     return " \\\n".join(further_arguments)
@@ -616,6 +626,22 @@ def get_freesurfer_addons(args):
         get_freesurfer_singularity_arguments(args, "brainstem"),
         failure_text("Brainstem Nuclei Segmentation", args),
     ]
+    addons = [
+        get_singularity_command(args) + " \\",
+        get_freesurfer_singularity_arguments(args, "thalamus_t1"),
+        failure_text("Thalamus 1st Segmentation", args),
+    ]
+    subject_path = pathlib.Path(args.rawdata) / f"sub-{args.subject}"
+    if args.input_t2 == "":
+        t2s = [str(p) for p in subject_path.glob("**/*T2w.nii.gz")]
+    else:
+        t2s = [args.input_t2, ]
+    if len(t2s) > 0:
+        addons += [
+            get_singularity_command(args) + " \\",
+            get_freesurfer_singularity_arguments(args, "thalamus_t2"),
+            failure_text("Thalamus 2nd Segmentation", args),
+        ]
     return "\n".join(addons)
 
 
