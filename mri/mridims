@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+if [[ -f $1 ]]; then
+  D=()
+  R=()
+  while read -r line; do
+    if [[ $line =~ (.*)dim([0-9])[[:space:]]+([0-9]+.*) ]]; then
+      if [[ "${BASH_REMATCH[1]}" == "" ]]; then
+      	D[${BASH_REMATCH[2]}]=${BASH_REMATCH[3]}
+      elif [[ "${BASH_REMATCH[1]}" == "pix" ]]; then
+      	R[${BASH_REMATCH[2]}]=${BASH_REMATCH[3]}
+      fi
+    fi
+  done <<< $(fslinfo $1)
+  DIMSTR="[${D[1]} x ${D[2]} x ${D[3]} x ${D[4]}]"
+  RESSTR="[${R[1]} x ${R[2]} x ${R[3]} x ${R[4]}]"
+  echo "D ${DIMSTR}, R ${RESSTR}"
+else
+  echo "no file"
+fi
