@@ -194,10 +194,10 @@ def main(args):
     all_data = []
     for cope in copes:
         voxelwise_dataframes = []
-        cope_img = nib.load(cope)
+        cope_img = nib.load(str(cope.resolve()))
         cope_data = cope_img.get_fdata()
         for mask in masks:
-            mask_img = nib.load(mask)
+            mask_img = nib.load(str(mask.resolve()))
             mask_data = mask_img.get_fdata()
             if args.verbose:
                 print(f"Applying {mask.name} to {cope.name}...")
