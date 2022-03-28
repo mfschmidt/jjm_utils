@@ -44,8 +44,11 @@ def get_arguments():
     args = parser.parse_args()
 
     # Ensure the feat directory exists
-    args.featpath = Path(args.featpath)
-    if not args.featpath.exists():
+    args.featpath = Path(args.featpath).resolve()
+    if args.featpath.exists():
+        if args.verbose:
+            print(f"Path is '{args.featpath}'")
+    else:
         print(f"Path '{args.featpath}' does not exist.")
         sys.exit(1)
 
@@ -54,6 +57,10 @@ def get_arguments():
             (args.featpath / ".." / "masks").resolve())
     setattr(args, "cope_path",
             (args.featpath / "stats").resolve())
+    if args.verbose:
+        print(f"Subject is '{args.subject_id}'.")
+        print(f"Masks are at '{args.mask_path}'.")
+        print(f"Copes are at '{args.cope_path}'.")
 
     # Clean up cope and mask arguments by accepting multiple specifications.
     cope_attempts = []
@@ -188,7 +195,10 @@ def main(args):
             print(f"  cope '{cope}'")
 
     # Ensure the path for writing exists.
-    out_path = args.mask_path / f"{args.featpath.name}_t-{args.threshold:0.2f}"
+    out_path = (
+        args.mask_path /
+        f"{args.featpath.name.replace('.feat', '')}_t-{args.threshold:0.2f}"
+    )
     out_path.mkdir(exist_ok=True)
 
     # For all specified copes and all specified masks, combine them and average
@@ -256,15 +266,25 @@ def main(args):
         # Save out complete set of all masked voxels
         voxelwise_dataframe = pd.concat(voxelwise_dataframes)
         all_data.append(voxelwise_dataframe)
-        voxelwise_dataframe.to_csv(
+        voxelwise_dataframe['subject'] = args.subject_id
+        voxelwise_dataframe[
+            ['subject', 'cope', 'mask', 'value', 'label', 'x', 'y', 'z', ]
+        ].sort_values(['cope', 'mask', ]).to_csv(
             out_path / f"sub-{args.subject_id}_cope-{cope.name[: -7]}_voxels_by_masks.csv",
             index=None
         )
 
     # Save out summarized stats from masked voxels
     all_data_for_summary = pd.concat(all_data)
-    grouping = all_data_for_summary[['cope', 'mask', 'value', ]].groupby(
-        ['cope', 'mask', ]
+    # Use cope_num to sort, then drop cope and replace it after sorting
+    all_data_for_summary['cope_num'] = all_data_for_summary['cope'].apply(
+        lambda x: int(x[4:])
+    )
+    all_data_for_summary = all_data_for_summary.sort_values(
+        ['cope_num', 'mask', ]
+    )
+    grouping = all_data_for_summary[['cope_num', 'mask', 'value', ]].groupby(
+        ['cope_num', 'mask', ]
     )['value']
     counts = grouping.count()
     counts.name = 'n'
@@ -272,12 +292,16 @@ def main(args):
     means.name = 'mean'
     sds = grouping.std()
     sds.name = 'sd'
-    stats_dataframe = pd.concat([means, sds, counts, ], axis=1)
+    stats_dataframe = pd.concat([means, sds, counts, ], axis=1).reset_index()
     stats_dataframe['subject'] = args.subject_id
+    stats_dataframe['cope'] = stats_dataframe['cope_num'].apply(
+        lambda x: f"cope{x}"
+    )
     stats_dataframe[
         ['subject', 'cope', 'mask', 'n', 'mean', 'sd', ]
-    ].sort_values(['cope', 'mask', ]).to_csv(
+    ].sort_index().to_csv(
         out_path / f"sub-{args.subject_id}_copes_by_masks.csv",
+        index=None
     )
 
     print(stats_dataframe)
