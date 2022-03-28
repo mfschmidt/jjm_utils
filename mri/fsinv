@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+
+if [[ -e "$1" ]]; then
+  # T1w and T2w images
+  if [[ -e "${1}/mri/T1.mgz" ]]; then
+  	T1="T1w"
+  else
+  	T1=" - "
+  fi
+  if [[ -e "${1}/mri/T2.mgz" ]]; then
+  	T2="T2w"
+  else
+  	T2=" - "
+  fi
+
+  # Cortical, subcortical volumes
+  if [[ -e "${1}/mri/wmparc.mgz" ]]; then
+  	CTX="CTX"
+  else
+  	CTX=" - "
+  fi
+  if [[ -e "${1}/mri/aseg.mgz" ]]; then
+    SUB="SUB"
+  else
+    SUB=" - "
+  fi
+
+  # Surfaces
+  if [[ -e "${1}/surf/lh.pial" ]]; then
+    if [[ -e "${1}/surf/rh.pial" ]]; then
+      SUR="L+R"
+    else
+      SUR="L -"
+    fi
+  elif [[ -e "${1}/surf/rh.pial" ]]; then
+    SUR="- R"
+  else
+    SUR="- -"
+  fi
+  
+  # Hippocampus and Amygdala Subfield Labels
+  if [[ -e "${1}/mri/lh.hippoAmygLabels-T1.v21.mgz" ]]; then
+    if [[ -e "${1}/mri/lh.hippoAmygLabels-T1-T2.v21.mgz" ]]; then
+      HA="2HA"
+    else
+      HA="1HA"
+    fi
+  else
+    HA="0HA"
+  fi
+
+  # Brainstem Nuclei Labels
+  if [[ -e "${1}/mri/brainstemSsLabels.v12.mgz" ]]; then
+    BS="BSN"; else BS="   "
+  fi
+
+  # Thalamic Nuclei Labels
+  if [[ -e "${1}/mri/ThalamicNuclei.v12.T1.mgz" ]]; then
+    TH="ThN"; else TH="   "
+  fi
+
+  COUNT=$(ls -1R ${1} | wc -l)
+  SIZE=$(du -sh ${1})
+
+  REALPATH=$(realpath "${1}")
+  echo "${REALPATH##*/}: ${SIZE%%$'\t'*} in ${COUNT} files |  ${T1}  ${T2}  ${CTX}  ${SUB}  ${SUR}  ${HA}  ${BS}  ${TH}"
+else
+  echo "${REALPATH##*/}: N/A"
+fi
+
