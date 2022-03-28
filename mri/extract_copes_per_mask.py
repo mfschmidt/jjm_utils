@@ -173,12 +173,18 @@ def main(args):
         masks = args.mask
     else:
         masks = [args.mask, ]
+    if args.verbose:
+        for mask in masks:
+            print(f"  mask '{mask}'")
 
     if args.cope is None:
         copes = list(args.cope_path.glob("cope*.nii.gz"))
         copes.sort(key=lambda x: int(str(x.name)[4: -7]))
     else:
         copes = [args.cope, ]
+    if args.verbose:
+        for cope in copes:
+            print(f"  cope '{cope}'")
 
     # Ensure the path for writing exists.
     out_path = args.mask_path / f"{args.featpath.name}_t-{args.threshold:0.2f}"
@@ -221,7 +227,9 @@ def main(args):
                         voxels['cope'] = cope.name[: -7]
                         voxels['mask'] = mask.name[: -7]
                         voxelwise_dataframes.append(voxels)
-            elif len(lbls) >= 50:
+            elif len(lbls) >= 20:
+                # Currently, the smallest probabilistic atlas contains
+                # 37 voxels. The largest labelled atlas contains 19 regions.
                 if args.verbose:
                     print("  mask looks probabilistic")
                 voxels = extract_voxels_by_threshold(
