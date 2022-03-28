@@ -168,7 +168,7 @@ def main(args):
         ))
 
     if args.mask is None:
-        masks = sorted(args.mask_path.glob("*.nii.gz"))
+        masks = sorted(args.mask_path.glob("res-bold_*.nii.gz"))
     elif isinstance(args.mask, list):
         masks = args.mask
     else:
@@ -180,6 +180,11 @@ def main(args):
     else:
         copes = [args.cope, ]
 
+    # Ensure the path for writing exists.
+    out_path = args.mask_path / f"{args.featpath.name}_t-{args.threshold:0.2f}"
+    out_path.mkdir(exist_ok=True)
+
+    # For all specified copes and all specified masks, combine them and average
     all_data = []
     for cope in copes:
         voxelwise_dataframes = []
@@ -199,6 +204,7 @@ def main(args):
                 print("  mask is {} x {} x {}".format(
                     mask_data.shape[0], mask_data.shape[1], mask_data.shape[2],
                 ))
+
             lbls, ns = np.unique(mask_data, return_counts=True)
             if len(lbls) == 1:
                 if args.verbose:
@@ -242,7 +248,7 @@ def main(args):
         voxelwise_dataframe = pd.concat(voxelwise_dataframes)
         all_data.append(voxelwise_dataframe)
         voxelwise_dataframe.to_csv(
-            args.featpath / f"{cope.name[: -7]}_masked_voxels.csv",
+            out_path / f"{cope.name[: -7]}_masked_voxels.csv",
             index=None
         )
 
@@ -257,7 +263,7 @@ def main(args):
     sds.name = 'sd'
     stats_dataframe = pd.concat([means, sds, ], axis=1)
     stats_dataframe.to_csv(
-        args.featpath / "cope_stats_by_mask.csv",
+        out_path / "cope_stats_by_mask.csv",
     )
 
     print(stats_dataframe)
