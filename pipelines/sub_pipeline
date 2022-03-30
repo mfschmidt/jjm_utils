@@ -564,7 +564,6 @@ def get_freesurfer_singularity_arguments(args, stage="recon"):
         t2s = [str(p) for p in subject_path.glob("**/*T2w.nii.gz")]
     else:
         t2s = [args.input_t2, ]
-    t20 = t2s[0]
 
     # Use -cm if sub-1mm voxels are desired.
     cm_str = " -cm" if args.cm else ""
@@ -582,6 +581,7 @@ def get_freesurfer_singularity_arguments(args, stage="recon"):
     elif stage == "hippocampus_t1":
         further_arguments = [f"  segmentHA_T1.sh sub-{args.subject} /out", ]
     elif stage == "hippocampus_t2":
+        t20 = t2s[0]
         further_arguments = [
             f"  segmentHA_T2.sh sub-{args.subject} {t20} T2 1 /out",
         ]
@@ -590,6 +590,7 @@ def get_freesurfer_singularity_arguments(args, stage="recon"):
             f"  segmentThalamicNuclei.sh sub-{args.subject} /out",
         ]
     elif stage == "thalamus_t2":
+        t20 = t2s[0]
         further_arguments = [
             f"  segmentThalamicNuclei.sh sub-{args.subject} {t20} T2 1 /out",
         ]
