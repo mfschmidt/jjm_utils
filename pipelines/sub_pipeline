@@ -163,7 +163,7 @@ class SlurmBatch():
             batch_file.write(self.failure_text("Container"))
 
             # FreeSurfer does additional segmentations as separate processes
-            batch_file.write(self.addons())
+            batch_file.write(self.singularity_addons())
 
             # If we are staging output, handle moving it to its final home
             if self.args.stage_output:
@@ -295,7 +295,7 @@ class FreeSurferBatch(SlurmBatch):
             ]
         return " \\\n".join(further_arguments)
 
-    def addons(self):
+    def singularity_addons(self):
         """ Return the text of additional processes for FreeSurfer 7 runs.
         """
 
