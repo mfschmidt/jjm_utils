@@ -31,7 +31,7 @@ class SlurmBatch():
 
         if self.args.log_file is None:
             setattr(args, "log_file",
-                    self.filename.replace(".sbatch", ".%j.out"))
+                    self.path / self.filename.replace(".sbatch", ".%j.out"))
 
     def header(self):
         """ Return the header with SLURM variables to the sbatch file.
