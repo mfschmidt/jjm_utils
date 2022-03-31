@@ -427,7 +427,10 @@ class FMRIPrepBatch(SlurmBatch):
         """ If output is staged locally, supply commands to relocate it.
         """
 
-        sfs_dir = f"{self.args.derivatives}/freesurfer{self.args.version[0]}"
+        sfs_dir = "/".join([
+            f"{self.args.derivatives}",
+            f"freesurfer{self.args.pipeline_version[0]}",
+        ])
         return "\n".join([
             super().move_staged_output_commands(),
             "# Find an open location for freesurfer output.",
