@@ -911,7 +911,12 @@ def main(args):
             print("  {}: {}".format(arg, getattr(args, arg)))
 
     if context_is_valid(args):
-        batch_script = SlurmBatch(args)
+        batch_script = {
+            "freesurfer": FreeSurferBatch,
+            "fmriprep": FMRIPrepBatch,
+            "mriqc": MRIQCBatch,
+            "qsiprep": QSIPrepBatch,
+        }[args.pipeline](args)
         batch_script.write()
         batch_script.submit()
 
