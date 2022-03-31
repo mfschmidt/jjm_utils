@@ -478,6 +478,22 @@ class MRIQCBatch(SlurmBatch):
             f"  --mem_gb {self.args.memory_gb}",
         ])
 
+    def singularity_mounts(self):
+        """ Return the mounts necessary for running the pipeline
+        """
+
+        return super().singularity_mounts() + [
+            {"host_path": self.args.work_directory,
+             "cont_path": "/work/",
+             "permissions": "rw", },
+            {"host_path": self.args.templateflow_directory,
+             "cont_path": "/opt/templateflow",
+             "permissions": "rw", },
+            {"host_path": self.args.matplotlib_directory,
+             "cont_path": "/opt/matplotlib",
+             "permissions": "rw", },
+        ]
+
     def cleanup_steps(self):
         """ To be overridden by each specific type of pipeline.
         """
