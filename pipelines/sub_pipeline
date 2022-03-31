@@ -6,7 +6,7 @@ import sys
 import os
 import platform
 import pwd
-import pathlib
+from pathlib import Path
 import json
 import subprocess
 
@@ -14,6 +14,469 @@ import argparse
 from argparse import RawTextHelpFormatter
 
 from datetime import datetime
+
+
+class SlurmBatch():
+    """ Represents a SLURM sbatch file """
+
+    def __init__(self, args):
+        """ Store args into object and start to interpret them. """
+        self.args = args
+
+        # Create the path and figure out the file names.
+        self.path = Path(self.args.home) / "bin" / "slurm"
+        self.filename = "_".join([
+            "batch", "sub-" + args.subject, args.pipeline, args.timestamp,
+        ]) + ".sbatch"
+
+        if self.args.log_file is None:
+            setattr(args, "log_file",
+                    self.filename.replace(".sbatch", ".%j.out"))
+
+    def header(self):
+        """ Return the header with SLURM variables to the sbatch file.
+        """
+        tf_env = "SINGULARITYENV_TEMPLATEFLOW_HOME"
+        mpl_env = "SINGULARITYENV_MPLCONFIGDIR"
+        return "\n".join([
+            "#!/bin/bash",
+            "",
+            f"#SBATCH --job-name={self.args.subject}",
+            f"#SBATCH --partition={self.args.slurm_partition}",
+            f"#SBATCH --output={self.args.log_file}",
+            f"#SBATCH --error={self.args.log_file}",
+            "#SBATCH --time=0",
+            f"#SBATCH --ntasks-per-node={self.args.num_threads}",
+            f"#SBATCH --mem={self.args.memory_mb}",
+            f"#SBATCH --chdir={self.args.tmp_root}",
+            "",
+            f"export {tf_env}=/opt/templateflow",
+            f"export {mpl_env}=/opt/matplotlib",
+            "",
+            f"mkdir -p {self.args.work_directory}",
+            f"mkdir -p {self.args.templateflow_directory}",
+            f"mkdir -p {self.args.matplotlib_directory}",
+            f"mkdir -p {self.args.staging_directory}",
+            "",
+            "",
+        ])
+
+    def singularity_mounts(self):
+        """ Return the mounts necessary for running the pipeline
+        """
+
+        return [
+            {"host_path": "/run/shm",
+             "cont_path": "/run/shm",
+             "permissions": "rw", },
+            {"host_path": "/data",
+             "cont_path": "/data",
+             "permissions": "ro", },
+            {"host_path": self.args.rawdata,
+             "cont_path": "/rawdata",
+             "permissions": "ro", },
+            {"host_path": self.args.staging_directory,
+             "cont_path": "/out",
+             "permissions": "rw", },
+        ]
+
+    def singularity_command(self):
+        """ Return the singularity command to execute in the sbatch file.
+
+            Some of these mounts don't matter for all situations, but mounting
+            them doesn't hurt either, so they all stay.
+        """
+        base_command = [
+            "singularity run --cleanenv",
+        ] + [
+            f"  -B {m['host_path']}:{m['cont_path']}:{m['permissions']}"
+            for m in self.singularity_mounts()
+        ] + [
+            f"  {self.args.sif_file}",
+        ]
+        return " \\\n".join(base_command)
+
+    def failure_text(self, what_failed):
+        """ Return the text to report a failure in the sbatch file.
+        """
+
+        failure_lines = [
+            "\nif [[ \"$?\" != \"0\" ]]; then",
+            f"  echo \"{what_failed} failed.\"",
+            f"  echo \"$(hostname):{self.args.work_directory}\"",
+            f"  echo \"$(hostname):{self.args.staging_directory}\"",
+            "  exit $?",
+            "fi\n",
+        ]
+        return "\n".join(failure_lines) + "\n"
+
+    def singularity_arguments(self):
+        """ To be overridden by each specific type of pipeline.
+        """
+
+        return ""
+
+    def singularity_addons(self):
+        """ To be overridden by each specific type of pipeline.
+        """
+
+        return ""
+
+    def move_staged_output_commands(self):
+        """ If output is staged locally, supply commands to relocate it.
+        """
+
+        return "\n".join([
+            "# Format and copy output to final destination.",
+            "chown {}:{} --recursive {}".format(
+                self.args.username, self.args.userid,
+                self.args.staging_directory
+            ),
+            "rsync -ah {}/{}/sub-{}* {}/{}/".format(
+                self.args.staging_directory, self.args.pipeline,
+                self.args.subject,
+                self.args.derivatives, self.args.pipeline
+            ),
+        ])
+
+    def cleanup_steps(self):
+        """ To be overridden by each specific type of pipeline.
+        """
+
+        return ""
+
+    def write(self, file):
+        """ Create the batch script to batch the pipeline execution. """
+
+        # Create the path and figure out the file names.
+        self.path.mkdir(exist_ok=True)
+        batch_file_path = self.path / self.filename
+
+        # Open and write the sbatch file.
+        with open(batch_file_path, "w") as batch_file:
+            batch_file.write(self.header())
+            batch_file.write(self.singularity_command() + " \\\n")
+            # TODO: Somewhere in here, pass along any arguments we did not
+            #       explicitly handle.
+            batch_file.write(self.singularity_arguments())
+            batch_file.write("\n")
+            batch_file.write(self.failure_text("Container"))
+
+            # FreeSurfer does additional segmentations as separate processes
+            batch_file.write(self.addons())
+
+            # If we are staging output, handle moving it to its final home
+            if self.args.stage_output:
+                batch_file.write(
+                    self.move_staged_output_commands()
+                )
+
+            batch_file.write(self.cleanup())
+
+            batch_file.write("\n".join([
+                "echo \"Job complete at $(date)\"",
+                f"rm -rf {self.args.work_directory}",
+                "# leave the templateflow directory for next time.",
+                ""
+            ]))
+            if self.args.stage_output:
+                batch_file.write(
+                    f"rm -rf {self.args.staging_directory}\n"
+                )
+        return batch_file_path
+
+    def submit(self):
+        """ Submit the created file. """
+        if self.args.verbose:
+            print("|=========--------- Batch file follows ---------=========|")
+            subprocess.run(["cat", str(self.path / self.filename), ],
+                           check=True)
+            print("|=========---------   end batch file   ---------=========|")
+        print(f"Batch file was saved to {str(self.path / self.filename)}")
+        if self.args.dry_run:
+            print("NOT submitting job because dry-run is True.")
+        else:
+            print("Submitting job at {}".format(
+                datetime.now().strftime("%Y%m%d %H:%M:%S")
+            ))
+            sbatch_submit_process = subprocess.run(
+                ["sbatch", str(self.path / self.filename), ], check=True,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            )
+            print(sbatch_submit_process.stdout.decode("utf-8"))
+
+
+class FreeSurferBatch(SlurmBatch):
+    """ Extend SlurmBatch to handle FreeSurfer """
+
+    def __init__(self, args):
+        super().__init__(args)
+        self.pipeline = "freesurfer"
+        self.subject_path = (
+            Path(self.args.rawdata) / f"sub-{self.args.subject}"
+        )
+
+    def singularity_mounts(self):
+        """ Return the mounts necessary for running the pipeline
+        """
+
+        return super().singularity_mounts() + [
+            {"host_path": self.args.work_directory,
+             "cont_path": "/work/",
+             "permissions": "rw", },
+            {"host_path": self.args.templateflow_directory,
+             "cont_path": "/opt/templateflow",
+             "permissions": "rw", },
+            {"host_path": self.args.matplotlib_directory,
+             "cont_path": "/opt/matplotlib",
+             "permissions": "rw", },
+            {"host_path": self.args.freesurfer_license,
+             "cont_path": "/opt/freesurfer/license.txt",
+             "permissions": "ro", },
+        ]
+
+    def singularity_arguments(self):
+        """ supply additional freesurfer-specific arguments """
+
+        # Use specified T1 & T2 files, or find them in BIDS-compatible rawdata
+        if self.args.input_t1 == "":
+            t1s = [str(p) for p in self.subject_path.glob("**/*T1w.nii.gz")]
+        else:
+            t1s = [self.args.input_t1, ]
+        if self.args.input_t2 == "":
+            t2s = [str(p) for p in self.subject_path.glob("**/*T2w.nii.gz")]
+        else:
+            t2s = [self.args.input_t2, ]
+
+        # Use -cm if sub-1mm voxels are desired.
+        cm_str = " -cm" if self.args.cm else ""
+
+        further_arguments = [
+            f"  recon-all -s sub-{self.args.subject}",
+        ] + [
+            f"  -i {t1.replace(self.args.rawdata, '/rawdata')}" for t1 in t1s
+        ] + [
+            f"  -T2 {t2.replace(self.args.rawdata, '/rawdata')}" for t2 in t2s
+        ] + [
+            f"  -sd /out -openmp {self.args.num_cpus}{cm_str} -all",
+        ]
+
+        return " \\\n".join(further_arguments)
+
+    def addon_arguments(self, stage):
+        """ supply additional freesurfer-specific arguments """
+
+        # Use specified T1 & T2 files, or find them in BIDS-compatible rawdata
+        if self.args.input_t2 == "":
+            t2 = [str(p) for p in self.subject_path.glob("**/*T2w.nii.gz")][0]
+        else:
+            t2 = self.args.input_t2
+
+        if stage == "hippocampus_t1":
+            further_arguments = [
+                f"  segmentHA_T1.sh sub-{self.args.subject} /out",
+            ]
+        elif stage == "hippocampus_t2":
+            further_arguments = [
+                f"  segmentHA_T2.sh sub-{self.args.subject} {t2} T2 1 /out",
+            ]
+        elif stage == "thalamus_t1":
+            further_arguments = [
+                f"  segmentThalamicNuclei.sh sub-{self.args.subject} /out",
+            ]
+        elif stage == "thalamus_t2":
+            further_arguments = [
+                f"  segmentThalamicNuclei.sh sub-{self.args.subject} {t2}"
+                " T2 1 /out",
+            ]
+        elif stage == "brainstem":
+            further_arguments = [
+                f"  segmentBS.sh sub-{self.args.subject} /out",
+            ]
+        return " \\\n".join(further_arguments)
+
+    def addons(self):
+        """ Return the text of additional processes for FreeSurfer 7 runs.
+        """
+
+        addons = [
+            self.singularity_command() + " \\",
+            self.addon_arguments("hippocampus_t1"),
+            self.failure_text("Hippocampal Subfields 1st Segmentation"),
+        ]
+        addons += [
+            self.singularity_command() + " \\",
+            self.addon_arguments("brainstem"),
+            self.failure_text("Brainstem Nuclei Segmentation"),
+        ]
+        addons += [
+            self.singularity_command() + " \\",
+            self.addon_arguments("thalamus_t1"),
+            self.failure_text("Thalamus 1st Segmentation"),
+        ]
+        if self.args.input_t2 == "":
+            t2s = [str(p) for p in self.subject_path.glob("**/*T2w.nii.gz")]
+        else:
+            t2s = [self.args.input_t2, ]
+        if len(t2s) > 0:
+            addons += [
+                self.singularity_command() + " \\",
+                self.addon_arguments("hippocampus_t2"),
+                self.failure_text("Hippocampal Subfields 2nd Segmentation"),
+            ]
+            addons += [
+                self.singularity_command() + " \\",
+                self.addon_arguments("thalamus_t2"),
+                self.failure_text("Thalamus 2nd Segmentation"),
+            ]
+        return "\n".join(addons)
+
+    def move_staged_output_commands(self):
+        """ If output is staged locally, supply commands to relocate it.
+        """
+
+        return "\n".join([
+            super().move_staged_output_commands(),
+            "rsync -ah {}/sub-{} {}/".format(
+                self.args.staging_directory,
+                self.args.subject,
+                self.args.subjects_dir,
+            ),
+            "",
+        ])
+
+
+class QSIPrepBatch(SlurmBatch):
+    """ Extend SlurmBatch to handle QSIPrep """
+
+    def __init__(self, args):
+        super().__init__(args)
+        self.pipeline = "qsiprep"
+
+    def singularity_arguments(self):
+        """ Return the arguments necessary for fmriprep, specifically.
+        """
+        further_arguments = [
+            "  /rawdata /out participant",
+            f"  --participant-label {self.args.subject} -w /work/",
+            "  --fs-license-file /opt/freesurfer/license.txt",
+            f"  --output-resolution {self.args.output_resolution}",
+            f"  --hmc-model {self.args.hmc_model}",
+            f"  --output-space {self.args.output_space}",
+            f"  --template {self.args.template}",
+            f"  --nthreads {self.args.num_threads}",
+            f"  --mem_mb {self.args.memory_mb}",
+        ]
+        if (self.args.recon_spec is not None) \
+           and (self.args.recon_spec != "none"):
+            further_arguments.append(
+                f"  --recon-spec {self.args.recon_spec}"
+            )
+        return " \\\n".join(further_arguments)
+
+    def move_staged_output_commands(self):
+        """ If output is staged locally, supply commands to relocate it.
+        """
+
+        return "\n".join([
+            super().staged_output_commands(),
+            "rsync -ah {}/qsirecon/sub-{}* {}/qsirecon/".format(
+                self.args.staging_directory,
+                self.args.subject,
+                self.args.derivatives,
+            ),
+            ""
+        ])
+
+
+class FMRIPrepBatch(SlurmBatch):
+    """ Extend SlurmBatch to handle FMRIPrep """
+
+    def __init__(self, args):
+        super().__init__(args)
+        self.pipeline = "fmriprep"
+
+    def get_fmriprep_singularity_arguments(self):
+        """ Return the arguments necessary for fmriprep, specifically
+        """
+        further_arguments = [
+            "  /rawdata /out participant",
+            f"  --participant-label {self.args.subject} -w /work/",
+            "  --fs-license-file /opt/freesurfer/license.txt",
+        ]
+        if self.args.pipeline_version.startswith("1."):
+            if self.args.output_space is not None:
+                further_arguments += [
+                    f"  --nthreads {self.args.num_threads}",
+                    f"  --mem_mb {self.args.memory_mb}",
+                    f"  --output-space {self.args.output_space}",
+                    f"  --template {self.args.template}",
+                    "  --template-resampling-grid " +
+                    f"{self.args.template_resampling_grid}",
+                ]
+        else:
+            if self.args.output_spaces is not None:
+                further_arguments += [
+                    f"  --nprocs {self.args.num_threads}",
+                    f"  --mem {self.args.memory_gb}",
+                    f"  --output-spaces {self.args.output_spaces}",
+                ]
+        return " \\\n".join(further_arguments)
+
+    def move_staged_output_commands(self):
+        """ If output is staged locally, supply commands to relocate it.
+        """
+
+        sfs_dir = f"{self.args.derivatives}/freesurfer{self.args.version[0]}"
+        return "\n".join([
+            super().move_staged_output_commands(),
+            "# Find an open location for freesurfer output.",
+            f"F={sfs_dir}/sub-{self.args.subject}",
+            "if [[ -e ${{F}} ]]; then",
+            "  N=0",
+            "  while [[ -e ${{F}} ]]; do",
+            "    echo \"will not overwrite existing data, ${{F}}\"",
+            "    N=$(( N + 1 ))",
+            "    F=${{F%%.*}}.${{N}}",
+            "  done",
+            "fi",
+            f"rsync -ah ${{F}}* {sfs_dir}/",
+            ""
+        ])
+
+
+class MRIQCBatch(SlurmBatch):
+    """ Extend SlurmBatch to handle MRIQC
+    """
+
+    def __init__(self, args):
+        super().__init__(args)
+        self.pipeline = "mriqc"
+
+    def singularity_arguments(self):
+        """ Return the arguments necessary for mriqc, specifically
+        """
+        return " \\\n".join([
+            "  /rawdata /out participant",
+            f"  --participant-label {self.args.subject}",
+            "  -w /work",
+            f"  --nprocs {self.args.num_threads}",
+            "  --omp-nthreads 8",
+            f"  --mem_gb {self.args.memory_gb}",
+        ])
+
+    def cleanup_steps(self):
+        """ To be overridden by each specific type of pipeline.
+        """
+
+        return "\n".join([
+            "",
+            "# Move reports into subject's sub-directory.",
+            f"mv {self.args.derivatives}/sub-{self.args.subject}_*.html "
+            f"{self.args.derivatives}/sub-{self.args.subject}/",
+            "",
+            "",
+        ])
 
 
 def retrieve_user_settings(pipeline, verbose=False):
@@ -341,7 +804,7 @@ def get_singularity_image(args):
             print("No version specified for {} pipeline.".format(
                 args.pipeline
             ))
-        possibilities = [str(p) for p in pathlib.Path(sif_path).glob(
+        possibilities = [str(p) for p in Path(sif_path).glob(
             "{}-*.sif".format(args.pipeline)
         )]
         if len(possibilities) <= 0:
@@ -360,7 +823,7 @@ def get_singularity_image(args):
                 args.pipeline, sif_file[sif_file.rfind("-") + 1:-4]
             ))
     else:
-        sif_file = pathlib.Path(os.path.join(
+        sif_file = Path(os.path.join(
             sif_path, "{}-{}.sif".format(args.pipeline, args.pipeline_version)
         ))
         if os.path.isfile(sif_file):
@@ -437,337 +900,6 @@ def context_is_valid(args):
     return retval
 
 
-def get_batch_header(args):
-    """ Return the header with SLURM variables to the sbatch file.
-    """
-    tf_env = "SINGULARITYENV_TEMPLATEFLOW_HOME"
-    mpl_env = "SINGULARITYENV_MPLCONFIGDIR"
-    return "\n".join([
-        "#!/bin/bash",
-        "",
-        f"#SBATCH --job-name={args.subject}",
-        f"#SBATCH --partition={args.slurm_partition}",
-        f"#SBATCH --output={args.log_file}",
-        f"#SBATCH --error={args.log_file}",
-        "#SBATCH --time=0",
-        f"#SBATCH --ntasks-per-node={args.num_threads}",
-        f"#SBATCH --mem={args.memory_mb}",
-        f"#SBATCH --chdir={args.tmp_root}",
-        "",
-        f"export {tf_env}=/opt/templateflow",
-        f"export {mpl_env}=/opt/matplotlib",
-        "",
-        f"mkdir -p {args.work_directory}",
-        f"mkdir -p {args.templateflow_directory}",
-        f"mkdir -p {args.matplotlib_directory}",
-        f"mkdir -p {args.staging_directory}",
-        "",
-        "",
-    ])
-
-
-def get_singularity_command(args):
-    """ Return the singularity command to execute in the sbatch file.
-
-        Some of these mounts don't matter for all situations, but mounting
-        them doesn't hurt either, so they all stay.
-    """
-    base_command = [
-        "singularity run --cleanenv",
-        "  -B /run/shm:/run/shm",
-        f"  -B {args.rawdata}:/rawdata:ro",
-        f"  -B {args.staging_directory}:/out",
-        "  -B /data:/data:ro",
-    ]
-    if args.pipeline != "freesurfer":
-        base_command += [
-            f"  -B {args.work_directory}:/work/",
-            f"  -B {args.templateflow_directory}:/opt/templateflow",
-            f"  -B {args.matplotlib_directory}:/opt/matplotlib",
-            f"  -B {args.freesurfer_license}:/opt/freesurfer/license.txt",
-        ]
-    base_command += [
-        f"  {args.sif_file}",
-    ]
-    return " \\\n".join(base_command)
-
-
-def get_mriqc_singularity_arguments(args):
-    """ Return the arguments necessary for mriqc, specifically
-    """
-    return " \\\n".join([
-        "  /rawdata /out participant",
-        f"  --participant-label {args.subject} -w /work",
-        f"  --nprocs {args.num_threads} --omp-nthreads 8",
-        f"  --mem_gb {args.memory_gb}",
-    ])
-
-
-def get_fmriprep_singularity_arguments(args):
-    """ Return the arguments necessary for fmriprep, specifically
-    """
-    further_arguments = [
-        "  /rawdata /out participant",
-        f"  --participant-label {args.subject} -w /work/",
-        "  --fs-license-file /opt/freesurfer/license.txt",
-    ]
-    if args.pipeline_version.startswith("1."):
-        if args.output_space is not None:
-            further_arguments += [
-                f"  --nthreads {args.num_threads}",
-                f"  --mem_mb {args.memory_mb}",
-                f"  --output-space {args.output_space}",
-                f"  --template {args.template}",
-                f"  --template-resampling-grid {args.template_resampling_grid}",
-            ]
-    else:
-        if args.output_spaces is not None:
-            further_arguments += [
-                f"  --nprocs {args.num_threads} --mem {args.memory_gb}",
-                f"  --output-spaces {args.output_spaces}",
-            ]
-    return " \\\n".join(further_arguments)
-
-
-def get_qsiprep_singularity_arguments(args):
-    """ Return the arguments necessary for fmriprep, specifically.
-    """
-    further_arguments = [
-        "  /rawdata /out participant",
-        f"  --participant-label {args.subject} -w /work/",
-        "  --fs-license-file /opt/freesurfer/license.txt",
-        f"  --output-resolution {args.output_resolution}",
-        f"  --hmc-model {args.hmc_model}",
-        f"  --output-space {args.output_space}",
-        f"  --template {args.template}",
-        f"  --nthreads {args.num_threads}",
-        f"  --mem_mb {args.memory_mb}",
-    ]
-    if (args.recon_spec is not None) and (args.recon_spec != "none"):
-        further_arguments.append(
-            f"  --recon-spec {args.recon_spec}"
-        )
-    return " \\\n".join(further_arguments)
-
-
-def get_freesurfer_singularity_arguments(args, stage="recon"):
-    """ Return the arguments necessary for freesurfer, specifically.
-    """
-
-    # Use specified T1w & T2w files, or find them in BIDS-compatible raw data.
-    subject_path = pathlib.Path(args.rawdata) / f"sub-{args.subject}"
-    if args.input_t1 == "":
-        t1s = [str(p) for p in subject_path.glob("**/*T1w.nii.gz")]
-    else:
-        t1s = [args.input_t1, ]
-    if args.input_t2 == "":
-        t2s = [str(p) for p in subject_path.glob("**/*T2w.nii.gz")]
-    else:
-        t2s = [args.input_t2, ]
-
-    # Use -cm if sub-1mm voxels are desired.
-    cm_str = " -cm" if args.cm else ""
-
-    if stage == "recon":
-        further_arguments = [
-            f"  recon-all -s sub-{args.subject}",
-        ] + [
-            f"  -i {t1.replace(args.rawdata, '/rawdata')}" for t1 in t1s
-        ] + [
-            f"  -T2 {t2.replace(args.rawdata, '/rawdata')}" for t2 in t2s
-        ] + [
-            f"  -sd /out -openmp {args.num_cpus}{cm_str} -all",
-        ]
-    elif stage == "hippocampus_t1":
-        further_arguments = [f"  segmentHA_T1.sh sub-{args.subject} /out", ]
-    elif stage == "hippocampus_t2":
-        t20 = t2s[0]
-        further_arguments = [
-            f"  segmentHA_T2.sh sub-{args.subject} {t20} T2 1 /out",
-        ]
-    elif stage == "thalamus_t1":
-        further_arguments = [
-            f"  segmentThalamicNuclei.sh sub-{args.subject} /out",
-        ]
-    elif stage == "thalamus_t2":
-        t20 = t2s[0]
-        further_arguments = [
-            f"  segmentThalamicNuclei.sh sub-{args.subject} {t20} T2 1 /out",
-        ]
-    elif stage == "brainstem":
-        further_arguments = [f"  segmentBS.sh sub-{args.subject} /out", ]
-    return " \\\n".join(further_arguments)
-
-
-def get_freesurfer_addons(args):
-    """ Return the text of additional processes for FreeSurfer 7 runs.
-    """
-
-    addons = [
-        get_singularity_command(args) + " \\",
-        get_freesurfer_singularity_arguments(args, "hippocampus_t1"),
-        failure_text("Hippocampal Subfields 1st Segmentation", args),
-    ]
-    addons += [
-        get_singularity_command(args) + " \\",
-        get_freesurfer_singularity_arguments(args, "brainstem"),
-        failure_text("Brainstem Nuclei Segmentation", args),
-    ]
-    addons += [
-        get_singularity_command(args) + " \\",
-        get_freesurfer_singularity_arguments(args, "thalamus_t1"),
-        failure_text("Thalamus 1st Segmentation", args),
-    ]
-    subject_path = pathlib.Path(args.rawdata) / f"sub-{args.subject}"
-    if args.input_t2 == "":
-        t2s = [str(p) for p in subject_path.glob("**/*T2w.nii.gz")]
-    else:
-        t2s = [args.input_t2, ]
-    if len(t2s) > 0:
-        addons += [
-            get_singularity_command(args) + " \\",
-            get_freesurfer_singularity_arguments(args, "hippocampus_t2"),
-            failure_text("Hippocampal Subfields 2nd Segmentation", args),
-        ]
-        addons += [
-            get_singularity_command(args) + " \\",
-            get_freesurfer_singularity_arguments(args, "thalamus_t2"),
-            failure_text("Thalamus 2nd Segmentation", args),
-        ]
-    return "\n".join(addons)
-
-
-def failure_text(what_failed, args):
-    """ Return the text to report a failure in the sbatch file.
-    """
-
-    failure_lines = [
-        "\nif [[ \"$?\" != \"0\" ]]; then",
-        f"  echo \"{what_failed} failed.\"",
-        f"  echo \"$(hostname):{args.work_directory}\"",
-        f"  echo \"$(hostname):{args.staging_directory}\"",
-        "  exit $?",
-        "fi\n",
-    ]
-    return "\n".join(failure_lines) + "\n"
-
-
-def write_batch_script(args):
-    """ Create the batch script to batch the pipeline execution. """
-
-    # Create the path and figure out the file names.
-    os.makedirs(os.path.join(args.home, "bin", "slurm"), exist_ok=True)
-    script_name = "_".join([
-        "batch", "sub-" + args.subject, args.pipeline, args.timestamp,
-    ]) + ".sbatch"
-    batch_file_path = pathlib.Path(args.home, "bin", "slurm", script_name)
-    if args.log_file is None:
-        setattr(args, "log_file", str(batch_file_path).replace(
-            ".sbatch", ".%j.out"
-        ))
-
-    # Open and write the sbatch file.
-    with open(batch_file_path, "w") as batch_file:
-        batch_file.write(get_batch_header(args))
-        batch_file.write(get_singularity_command(args) + " \\\n")
-        # TODO: Somewhere in here, pass along any arguments we did not
-        #       explicitly handle.
-        if args.pipeline == "fmriprep":
-            batch_file.write(get_fmriprep_singularity_arguments(args))
-        elif args.pipeline == "qsiprep":
-            batch_file.write(get_qsiprep_singularity_arguments(args))
-        elif args.pipeline == "freesurfer":
-            batch_file.write(get_freesurfer_singularity_arguments(args))
-        elif args.pipeline == "mriqc":
-            batch_file.write(get_mriqc_singularity_arguments(args))
-        batch_file.write("\n")
-        batch_file.write(failure_text("Container", args))
-
-        # FreeSurfer does additional segmentations as separate processes
-        if args.pipeline == "freesurfer":
-            # Write commands to execute sub-segmentations
-            batch_file.write(get_freesurfer_addons(args))
-
-        # If we are staging output, handle moving it to its final home
-        if args.stage_output:
-            batch_file.write(
-                "# Format and copy output to final destination.\n"
-            )
-            batch_file.write("chown {}:{} --recursive {}\n".format(
-                args.username, args.userid, args.staging_directory
-            ))
-            batch_file.write("rsync -ah {}/{}/sub-{}* {}/{}/\n".format(
-                args.staging_directory, args.pipeline, args.subject,
-                args.derivatives, args.pipeline
-            ))
-            if args.pipeline == "fmriprep":
-                sfs_dir = f"{args.derivatives}/freesurfer/sub-{args.subject}"
-                batch_file.write(
-                    f"# Find an open location for freesurfer output.\n"
-                    f"F={sfs_dir}\n"
-                    f"if [[ -e ${{F}} ]]; then\n"
-                    f"  N=0\n"
-                    f"  while [[ -e ${{F}} ]]; do\n"
-                    f"    echo \"will not overwrite existing data, ${{F}}\"\n"
-                    f"    N=$(( N + 1 ))\n"
-                    f"    F=${{F%%.*}}.${{N}}\n"
-                    f"  done\n"
-                    f"fi\n"
-                    f"rsync -ah ${{F}}* {args.derivatives}/freesurfer/\n"
-                )
-            elif args.pipeline == "qsiprep":
-                batch_file.write(
-                    "rsync -ah {}/qsirecon/sub-{}* {}/qsirecon/\n".format(
-                        args.staging_directory, args.subject, args.derivatives,
-                    )
-                )
-            elif args.pipeline == "freesurfer":
-                batch_file.write(
-                    "rsync -ah {}/sub-{} {}/\n".format(
-                        args.staging_directory, args.subject,
-                        args.subjects_dir,
-                    )
-                )
-
-        if args.pipeline == "mriqc":
-            batch_file.write(
-                f"\n# Move reports into subject's sub-directory.\n"
-                f"mv {args.derivatives}/sub-{args.subject}_*.html "
-                f"{args.derivatives}/sub-{args.subject}/\n\n"
-            )
-
-        batch_file.write(
-            f"echo \"Job complete at $(date)\"\n"
-            f"rm -rf {args.work_directory}\n"
-            f"# leave the templateflow directory for next time.\n"
-        )
-        if args.stage_output:
-            batch_file.write(
-                f"rm -rf {args.staging_directory}\n"
-            )
-    return batch_file_path
-
-
-def submit_batch_script(sbatch_file, dry_run=False, verbose=False):
-    """ Create the batch script to batch the pipeline execution. """
-    if verbose:
-        print("|==========---------- Batch file follows ----------==========|")
-        subprocess.run(["cat", str(sbatch_file), ], check=True)
-        print("|==========----------   end batch file   ----------==========|")
-    print("Batch file was saved to {}".format(str(sbatch_file)))
-    if dry_run:
-        print("NOT submitting job because dry-run is True.")
-    else:
-        print("Submitting job at {}".format(
-            datetime.now().strftime("%Y%m%d %H:%M:%S")
-        ))
-        sbatch_submit_process = subprocess.run(
-            ["sbatch", str(sbatch_file), ], check=True,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        )
-        print(sbatch_submit_process.stdout.decode("utf-8"))
-
-
 def main(args):
     """ Entry point """
 
@@ -779,10 +911,9 @@ def main(args):
             print("  {}: {}".format(arg, getattr(args, arg)))
 
     if context_is_valid(args):
-        batch_script = write_batch_script(args)
-        submit_batch_script(
-            batch_script, dry_run=args.dry_run, verbose=args.verbose
-        )
+        batch_script = SlurmBatch(args)
+        batch_script.write()
+        batch_script.submit()
 
 
 if __name__ == "__main__":
