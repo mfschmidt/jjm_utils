@@ -396,7 +396,7 @@ class FMRIPrepBatch(SlurmBatch):
         super().__init__(args)
         self.pipeline = "fmriprep"
 
-    def get_fmriprep_singularity_arguments(self):
+    def singularity_arguments(self):
         """ Return the arguments necessary for fmriprep, specifically
         """
         further_arguments = [
