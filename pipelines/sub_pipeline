@@ -145,7 +145,7 @@ class SlurmBatch():
 
         return ""
 
-    def write(self, file):
+    def write(self):
         """ Create the batch script to batch the pipeline execution. """
 
         # Create the path and figure out the file names.
