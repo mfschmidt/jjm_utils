@@ -292,6 +292,7 @@ def main(args):
     means.name = 'mean'
     sds = grouping.std()
     sds.name = 'sd'
+    # While sorted by cope_num and mask, lock in the index.
     stats_dataframe = pd.concat([means, sds, counts, ], axis=1).reset_index()
     stats_dataframe['subject'] = args.subject_id
     stats_dataframe['cope'] = stats_dataframe['cope_num'].apply(
