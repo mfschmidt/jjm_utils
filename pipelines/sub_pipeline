@@ -216,25 +216,6 @@ class FreeSurferBatch(SlurmBatch):
             Path(self.args.rawdata) / f"sub-{self.args.subject}"
         )
 
-    def singularity_mounts(self):
-        """ Return the mounts necessary for running the pipeline
-        """
-
-        return super().singularity_mounts() + [
-            {"host_path": self.args.work_directory,
-             "cont_path": "/work/",
-             "permissions": "rw", },
-            {"host_path": self.args.templateflow_directory,
-             "cont_path": "/opt/templateflow",
-             "permissions": "rw", },
-            {"host_path": self.args.matplotlib_directory,
-             "cont_path": "/opt/matplotlib",
-             "permissions": "rw", },
-            {"host_path": self.args.freesurfer_license,
-             "cont_path": "/opt/freesurfer/license.txt",
-             "permissions": "ro", },
-        ]
-
     def singularity_arguments(self):
         """ supply additional freesurfer-specific arguments """
 
@@ -331,6 +312,16 @@ class FreeSurferBatch(SlurmBatch):
             ]
         return "\n".join(addons)
 
+    def singularity_mounts(self):
+        """ Return the mounts necessary for running the pipeline
+        """
+
+        return super().singularity_mounts() + [
+            {"host_path": self.args.freesurfer_license,
+             "cont_path": "/opt/freesurfer/license.txt",
+             "permissions": "ro", },
+        ]
+
     def move_staged_output_commands(self):
         """ If output is staged locally, supply commands to relocate it.
         """
@@ -422,6 +413,25 @@ class FMRIPrepBatch(SlurmBatch):
                     f"  --output-spaces {self.args.output_spaces}",
                 ]
         return " \\\n".join(further_arguments)
+
+    def singularity_mounts(self):
+        """ Return the mounts necessary for running the pipeline
+        """
+
+        return super().singularity_mounts() + [
+            {"host_path": self.args.work_directory,
+             "cont_path": "/work/",
+             "permissions": "rw", },
+            {"host_path": self.args.templateflow_directory,
+             "cont_path": "/opt/templateflow",
+             "permissions": "rw", },
+            {"host_path": self.args.matplotlib_directory,
+             "cont_path": "/opt/matplotlib",
+             "permissions": "rw", },
+            {"host_path": self.args.freesurfer_license,
+             "cont_path": "/opt/freesurfer/license.txt",
+             "permissions": "ro", },
+        ]
 
     def move_staged_output_commands(self):
         """ If output is staged locally, supply commands to relocate it.
