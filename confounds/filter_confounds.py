@@ -12,24 +12,37 @@ import pandas as pd
     in filtering the dataframe.
 """
 
+
 def motion_confounds(data, dof=6):
     """ Return the specified number of motion regressor columns from data. """
-    
+
     motion_prefixes = ["trans", "rot", ]
     motion_axes = ["x", "y", "z", ]
     motion_suffixes = ["derivative1", "power2", "derivative1_power2", ]
-    
+
     column_candidates = []
-    if dof >= 6:
+    if dof in [6, 12, 18, 24, ]:
         for pre in motion_prefixes:
             for ax in motion_axes:
                 column_candidates.append(f"{pre}_{ax}")
-                if dof >= 9:
-                    column_candidates.append(f"{pre}_{ax}_{motion_suffixes[0]}")
-                if dof >= 12:
-                    column_candidates.append(f"{pre}_{ax}_{motion_suffixes[1]}")
-                if dof >= 15:
-                    column_candidates.append(f"{pre}_{ax}_{motion_suffixes[2]}")
+                if dof == 12:
+                    column_candidates.append(
+                        f"{pre}_{ax}_{motion_suffixes[0]}"
+                    )
+                if dof == 18:
+                    column_candidates.append(
+                        f"{pre}_{ax}_{motion_suffixes[1]}"
+                    )
+                if dof == 24:
+                    column_candidates.append(
+                        f"{pre}_{ax}_{motion_suffixes[2]}"
+                    )
+    else:
+        print("Only motion degrees-of-freedom in multiples of 6 are handled.")
+        print("The first 6 are 3-dimensions each of translation and rotation.")
+        print("The next 6 are derivatives of each of the first six.")
+        print("The next 6 are powers of each of the first six.")
+        print("The next 6 are derivatives of powers of each of the first six.")
 
     return data[
         [col for col in column_candidates if col in data.columns]
@@ -68,26 +81,27 @@ def mod_confounds(args):
 
     confounds_data = pd.read_csv(args.input, sep="\t", header=0)
     full_shape = confounds_data.shape
-    
+
     if args.level == "motion":
         confounds_data = motion_confounds(confounds_data, args.motion)
     elif args.level == "basic":
         confounds_data = pd.concat([
             basic_confounds(confounds_data),
             motion_confounds(confounds_data, args.motion),
-        ], axis=1, )
+        ], axis=1, sort=False)
     elif args.level == "curious":
         confounds_data = pd.concat([
             basic_confounds(confounds_data),
             motion_confounds(confounds_data, args.motion),
             curious_confounds(confounds_data),
-        ], axis=1, )
-        
+        ], axis=1, sort=False)
+
     if args.scrub:
         confounds_data = pd.concat([
             confounds_data,
             scrubbed_confounds(confounds_data),
-        ])
+        ], axis=1, sort=False)
+
     print("Read [{} TRs x {} regressors] confounds, writing [{} x {}]".format(
         full_shape[0], full_shape[1],
         confounds_data.shape[0], confounds_data.shape[1]
@@ -100,9 +114,10 @@ def mod_confounds(args):
 """ And finally, the interface components
 """
 
+
 def get_arguments():
     """ Parse command line arguments """
-    
+
     parser = argparse.ArgumentParser(
         description="Extract regressor columns from confounds file.",
     )
@@ -135,9 +150,9 @@ def get_arguments():
         "-v", "--verbose", action="store_true",
         help="Set to trigger verbose output",
     )
-    
+
     return parser.parse_args()
-    
+
 
 def main(args):
     """ Entry point """
@@ -145,7 +160,7 @@ def main(args):
     if args.verbose:
         print(f"Reading {args.input} to write {args.output}.")
         print(f"Extracting {args.level} with {args.motion} motion dof.")
-        
+
     mod_confounds(args)
 
 
