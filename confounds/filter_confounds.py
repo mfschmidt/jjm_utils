@@ -70,7 +70,8 @@ def curious_confounds(data):
 def scrubbed_confounds(data):
     """ Return the regressors we are interested in testing. """
     column_candidates = [
-        col for col in data.columns if col.startswith("motion_outlier")]
+        col for col in data.columns if col.startswith("motion_outlier")
+    ]
     return data[
         [col for col in column_candidates if col in data.columns]
     ]
@@ -79,25 +80,25 @@ def scrubbed_confounds(data):
 def mod_confounds(args):
     """ Read confounds and write out a subset, based on specified level. """
 
-    confounds_data = pd.read_csv(args.input, sep="\t", header=0)
-    full_shape = confounds_data.shape
+    full_confounds_data = pd.read_csv(args.input, sep="\t", header=0)
+    full_shape = full_confounds_data.shape
 
     if args.level == "motion":
-        confounds_data = motion_confounds(confounds_data, args.motion)
+        confounds_data = motion_confounds(full_confounds_data, args.motion)
         if args.verbose:
             print(f" {len(confounds_data.columns)} cols via '{args.level}'")
     elif args.level == "basic":
         confounds_data = pd.concat([
-            basic_confounds(confounds_data),
-            motion_confounds(confounds_data, args.motion),
+            basic_confounds(full_confounds_data),
+            motion_confounds(full_confounds_data, args.motion),
         ], axis=1, sort=False)
         if args.verbose:
             print(f" {len(confounds_data.columns)} cols via '{args.level}'")
     elif args.level == "curious":
         confounds_data = pd.concat([
-            basic_confounds(confounds_data),
-            motion_confounds(confounds_data, args.motion),
-            curious_confounds(confounds_data),
+            basic_confounds(full_confounds_data),
+            motion_confounds(full_confounds_data, args.motion),
+            curious_confounds(full_confounds_data),
         ], axis=1, sort=False)
         if args.verbose:
             print(f" {len(confounds_data.columns)} cols via '{args.level}'")
@@ -105,7 +106,7 @@ def mod_confounds(args):
     if args.scrub:
         confounds_data = pd.concat([
             confounds_data,
-            scrubbed_confounds(confounds_data),
+            scrubbed_confounds(full_confounds_data),
         ], axis=1, sort=False)
         if args.verbose:
             print(f" {len(confounds_data.columns)} cols via 'scrubbing'")
