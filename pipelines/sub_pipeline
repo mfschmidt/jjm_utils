@@ -31,7 +31,7 @@ class SlurmBatch():
 
         if self.args.log_file is None:
             setattr(args, "log_file",
-                    self.filename.replace(".sbatch", ".%j.out"))
+                    self.path / self.filename.replace(".sbatch", ".%j.out"))
 
     def header(self):
         """ Return the header with SLURM variables to the sbatch file.
@@ -145,7 +145,7 @@ class SlurmBatch():
 
         return ""
 
-    def write(self, file):
+    def write(self):
         """ Create the batch script to batch the pipeline execution. """
 
         # Create the path and figure out the file names.
@@ -163,7 +163,7 @@ class SlurmBatch():
             batch_file.write(self.failure_text("Container"))
 
             # FreeSurfer does additional segmentations as separate processes
-            batch_file.write(self.addons())
+            batch_file.write(self.singularity_addons())
 
             # If we are staging output, handle moving it to its final home
             if self.args.stage_output:
@@ -171,7 +171,7 @@ class SlurmBatch():
                     self.move_staged_output_commands()
                 )
 
-            batch_file.write(self.cleanup())
+            batch_file.write(self.cleanup_steps())
 
             batch_file.write("\n".join([
                 "echo \"Job complete at $(date)\"",
@@ -215,25 +215,6 @@ class FreeSurferBatch(SlurmBatch):
         self.subject_path = (
             Path(self.args.rawdata) / f"sub-{self.args.subject}"
         )
-
-    def singularity_mounts(self):
-        """ Return the mounts necessary for running the pipeline
-        """
-
-        return super().singularity_mounts() + [
-            {"host_path": self.args.work_directory,
-             "cont_path": "/work/",
-             "permissions": "rw", },
-            {"host_path": self.args.templateflow_directory,
-             "cont_path": "/opt/templateflow",
-             "permissions": "rw", },
-            {"host_path": self.args.matplotlib_directory,
-             "cont_path": "/opt/matplotlib",
-             "permissions": "rw", },
-            {"host_path": self.args.freesurfer_license,
-             "cont_path": "/opt/freesurfer/license.txt",
-             "permissions": "ro", },
-        ]
 
     def singularity_arguments(self):
         """ supply additional freesurfer-specific arguments """
@@ -297,7 +278,7 @@ class FreeSurferBatch(SlurmBatch):
             ]
         return " \\\n".join(further_arguments)
 
-    def addons(self):
+    def singularity_addons(self):
         """ Return the text of additional processes for FreeSurfer 7 runs.
         """
 
@@ -332,6 +313,16 @@ class FreeSurferBatch(SlurmBatch):
                 self.failure_text("Thalamus 2nd Segmentation"),
             ]
         return "\n".join(addons)
+
+    def singularity_mounts(self):
+        """ Return the mounts necessary for running the pipeline
+        """
+
+        return super().singularity_mounts() + [
+            {"host_path": self.args.freesurfer_license,
+             "cont_path": "/opt/freesurfer/license.txt",
+             "permissions": "ro", },
+        ]
 
     def move_staged_output_commands(self):
         """ If output is staged locally, supply commands to relocate it.
@@ -398,7 +389,7 @@ class FMRIPrepBatch(SlurmBatch):
         super().__init__(args)
         self.pipeline = "fmriprep"
 
-    def get_fmriprep_singularity_arguments(self):
+    def singularity_arguments(self):
         """ Return the arguments necessary for fmriprep, specifically
         """
         further_arguments = [
@@ -425,11 +416,33 @@ class FMRIPrepBatch(SlurmBatch):
                 ]
         return " \\\n".join(further_arguments)
 
+    def singularity_mounts(self):
+        """ Return the mounts necessary for running the pipeline
+        """
+
+        return super().singularity_mounts() + [
+            {"host_path": self.args.work_directory,
+             "cont_path": "/work/",
+             "permissions": "rw", },
+            {"host_path": self.args.templateflow_directory,
+             "cont_path": "/opt/templateflow",
+             "permissions": "rw", },
+            {"host_path": self.args.matplotlib_directory,
+             "cont_path": "/opt/matplotlib",
+             "permissions": "rw", },
+            {"host_path": self.args.freesurfer_license,
+             "cont_path": "/opt/freesurfer/license.txt",
+             "permissions": "ro", },
+        ]
+
     def move_staged_output_commands(self):
         """ If output is staged locally, supply commands to relocate it.
         """
 
-        sfs_dir = f"{self.args.derivatives}/freesurfer{self.args.version[0]}"
+        sfs_dir = "/".join([
+            f"{self.args.derivatives}",
+            f"freesurfer{self.args.pipeline_version[0]}",
+        ])
         return "\n".join([
             super().move_staged_output_commands(),
             "# Find an open location for freesurfer output.",
@@ -466,6 +479,22 @@ class MRIQCBatch(SlurmBatch):
             "  --omp-nthreads 8",
             f"  --mem_gb {self.args.memory_gb}",
         ])
+
+    def singularity_mounts(self):
+        """ Return the mounts necessary for running the pipeline
+        """
+
+        return super().singularity_mounts() + [
+            {"host_path": self.args.work_directory,
+             "cont_path": "/work/",
+             "permissions": "rw", },
+            {"host_path": self.args.templateflow_directory,
+             "cont_path": "/opt/templateflow",
+             "permissions": "rw", },
+            {"host_path": self.args.matplotlib_directory,
+             "cont_path": "/opt/matplotlib",
+             "permissions": "rw", },
+        ]
 
     def cleanup_steps(self):
         """ To be overridden by each specific type of pipeline.
@@ -913,7 +942,12 @@ def main(args):
             print("  {}: {}".format(arg, getattr(args, arg)))
 
     if context_is_valid(args):
-        batch_script = SlurmBatch(args)
+        batch_script = {
+            "freesurfer": FreeSurferBatch,
+            "fmriprep": FMRIPrepBatch,
+            "mriqc": MRIQCBatch,
+            "qsiprep": QSIPrepBatch,
+        }[args.pipeline](args)
         batch_script.write()
         batch_script.submit()
 

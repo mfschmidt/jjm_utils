@@ -30,5 +30,5 @@ sudo cp ${SRC_FILES} ${DEST}
 sudo chown root:mriproc ${TGT_FILES}
 sudo chmod 755 ${TGT_FILES}
 ls -l ${TGT_FILES}
-${DEST}/cleanup_tmp.sh
+#${DEST}/cleanup_tmp.sh
 "
