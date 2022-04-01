@@ -803,6 +803,9 @@ def get_arguments():
         ))
     if getattr(args, "slurm_partition") is None:
         setattr(args, "slurm_partition", args.pipeline)
+    if getattr(args, "freesurfer_license") is None:
+        setattr(args, "freesurfer_license",
+                "/data/export/home/mikes/freesurfer/license.txt")
 
     # If staging output, set up the directory, otherwise just copy derivatives
     if args.stage_output:
