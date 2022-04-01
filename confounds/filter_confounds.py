@@ -84,23 +84,31 @@ def mod_confounds(args):
 
     if args.level == "motion":
         confounds_data = motion_confounds(confounds_data, args.motion)
+        if args.verbose:
+            print(f" {len(confounds_data.columns)} cols via '{args.level}'")
     elif args.level == "basic":
         confounds_data = pd.concat([
             basic_confounds(confounds_data),
             motion_confounds(confounds_data, args.motion),
         ], axis=1, sort=False)
+        if args.verbose:
+            print(f" {len(confounds_data.columns)} cols via '{args.level}'")
     elif args.level == "curious":
         confounds_data = pd.concat([
             basic_confounds(confounds_data),
             motion_confounds(confounds_data, args.motion),
             curious_confounds(confounds_data),
         ], axis=1, sort=False)
+        if args.verbose:
+            print(f" {len(confounds_data.columns)} cols via '{args.level}'")
 
     if args.scrub:
         confounds_data = pd.concat([
             confounds_data,
             scrubbed_confounds(confounds_data),
         ], axis=1, sort=False)
+        if args.verbose:
+            print(f" {len(confounds_data.columns)} cols via 'scrubbing'")
 
     print("Read [{} TRs x {} regressors] confounds, writing [{} x {}]".format(
         full_shape[0], full_shape[1],
@@ -158,8 +166,10 @@ def main(args):
     """ Entry point """
 
     if args.verbose:
+        scrubbing = " and scrubbing" if args.scrub else ""
         print(f"Reading {args.input} to write {args.output}.")
-        print(f"Extracting {args.level} with {args.motion} motion dof.")
+        print(f"Extracting {args.level} "
+              f"with {args.motion} motion dof{scrubbing}.")
 
     mod_confounds(args)
 
