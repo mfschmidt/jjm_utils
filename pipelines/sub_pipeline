@@ -254,9 +254,11 @@ class FreeSurferBatch(SlurmBatch):
         further_arguments = [
             f"  recon-all -s sub-{self.args.subject}",
         ] + [
-            f"  -i {t1.replace(self.args.rawdata, '/rawdata')}" for t1 in t1s
+            f"  -i {t1.replace(self.args.rawdata, '/rawdata')}"
+            for t1 in t1s
         ] + [
-            f"  -T2 {t2.replace(self.args.rawdata, '/rawdata')}" for t2 in t2s
+            f"  -T2 {t2.replace(self.args.rawdata, '/rawdata')} -T2pial"
+            for t2 in t2s
         ] + [
             f"  -sd /out -openmp {self.args.num_cpus}{cm_str} -all",
         ]
