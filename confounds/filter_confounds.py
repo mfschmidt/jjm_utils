@@ -22,20 +22,20 @@ def motion_confounds(data, dof=6, verbose=False):
 
     column_candidates = []
     if verbose:
-        print(f" finding motion columns for dof of '{dof}' ({type(dof)}")
+        print(f" finding motion columns for dof of '{dof}' ({type(dof)})")
     if dof in [6, 12, 18, 24, ]:
         for pre in motion_prefixes:
             for ax in motion_axes:
                 column_candidates.append(f"{pre}_{ax}")
-                if dof == 12:
+                if dof in [12, 18, 24, ]:
                     column_candidates.append(
                         f"{pre}_{ax}_{motion_suffixes[0]}"
                     )
-                if dof == 18:
+                if dof in [18, 24, ]:
                     column_candidates.append(
                         f"{pre}_{ax}_{motion_suffixes[1]}"
                     )
-                if dof == 24:
+                if dof in [24, ]:
                     column_candidates.append(
                         f"{pre}_{ax}_{motion_suffixes[2]}"
                     )
@@ -46,9 +46,10 @@ def motion_confounds(data, dof=6, verbose=False):
         print("The next 6 are powers of each of the first six.")
         print("The next 6 are derivatives of powers of each of the first six.")
 
-    included_columns = [col for col in column_candidates if col in data.columns]
+    included_columns = [col for col in column_candidates
+                        if col in data.columns]
     if verbose:
-        print(f" found {len(column_candidates)} motion columns, "
+        print(f" found {len(column_candidates)} motion columns,"
               f" {len(included_columns)} are ok to include.")
 
     return data[included_columns]
