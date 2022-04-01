@@ -13,7 +13,7 @@ import pandas as pd
 """
 
 
-def motion_confounds(data, dof=6):
+def motion_confounds(data, dof=6, verbose=False):
     """ Return the specified number of motion regressor columns from data. """
 
     motion_prefixes = ["trans", "rot", ]
@@ -21,10 +21,13 @@ def motion_confounds(data, dof=6):
     motion_suffixes = ["derivative1", "power2", "derivative1_power2", ]
 
     column_candidates = []
+    if verbose:
+        print(f" finding motion columns for dof of '{dof}' ({type(dof)}")
     if dof in [6, 12, 18, 24, ]:
         for pre in motion_prefixes:
             for ax in motion_axes:
                 column_candidates.append(f"{pre}_{ax}")
+                print(dof)
                 if dof == 12:
                     column_candidates.append(
                         f"{pre}_{ax}_{motion_suffixes[0]}"
@@ -44,9 +47,12 @@ def motion_confounds(data, dof=6):
         print("The next 6 are powers of each of the first six.")
         print("The next 6 are derivatives of powers of each of the first six.")
 
-    return data[
-        [col for col in column_candidates if col in data.columns]
-    ]
+    included_columns = [col for col in column_candidates if col in data.columns]
+    if verbose:
+        print(f" found {len(column_candidates)} motion columns, "
+              f" {len(included_columns)} are ok to include.")
+
+    return data[included_columns]
 
 
 def basic_confounds(data):
