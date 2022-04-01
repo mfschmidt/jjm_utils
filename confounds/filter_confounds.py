@@ -27,7 +27,6 @@ def motion_confounds(data, dof=6, verbose=False):
         for pre in motion_prefixes:
             for ax in motion_axes:
                 column_candidates.append(f"{pre}_{ax}")
-                print(dof)
                 if dof == 12:
                     column_candidates.append(
                         f"{pre}_{ax}_{motion_suffixes[0]}"
@@ -90,20 +89,23 @@ def mod_confounds(args):
     full_shape = full_confounds_data.shape
 
     if args.level == "motion":
-        confounds_data = motion_confounds(full_confounds_data, args.motion)
+        confounds_data = motion_confounds(full_confounds_data, args.motion,
+                                          verbose=args.verbose)
         if args.verbose:
             print(f" {len(confounds_data.columns)} cols via '{args.level}'")
     elif args.level == "basic":
         confounds_data = pd.concat([
             basic_confounds(full_confounds_data),
-            motion_confounds(full_confounds_data, args.motion),
+            motion_confounds(full_confounds_data, args.motion,
+                             verbose=args.verbose),
         ], axis=1, sort=False)
         if args.verbose:
             print(f" {len(confounds_data.columns)} cols via '{args.level}'")
     elif args.level == "curious":
         confounds_data = pd.concat([
             basic_confounds(full_confounds_data),
-            motion_confounds(full_confounds_data, args.motion),
+            motion_confounds(full_confounds_data, args.motion,
+                             verbose=args.verbose),
             curious_confounds(full_confounds_data),
         ], axis=1, sort=False)
         if args.verbose:
