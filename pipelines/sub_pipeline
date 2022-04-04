@@ -38,6 +38,7 @@ class SlurmBatch():
         """
         tf_env = "SINGULARITYENV_TEMPLATEFLOW_HOME"
         mpl_env = "SINGULARITYENV_MPLCONFIGDIR"
+        fssd_env = "SINGULARITYENV_SUBJECTS_DIR"
         return "\n".join([
             "#!/bin/bash",
             "",
@@ -52,6 +53,7 @@ class SlurmBatch():
             "",
             f"export {tf_env}=/opt/templateflow",
             f"export {mpl_env}=/opt/matplotlib",
+            f"export {fssd_env}=/out",
             "",
             f"mkdir -p {self.args.work_directory}",
             f"mkdir -p {self.args.templateflow_directory}",
