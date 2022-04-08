@@ -253,25 +253,25 @@ class FreeSurferBatch(SlurmBatch):
 
         # Use specified T1 & T2 files, or find them in BIDS-compatible rawdata
         if self.args.input_t2 == "":
-            t2 = [str(p) for p in self.subject_path.glob("**/*T2w.nii.gz")][0]
+            t2s = [str(p) for p in self.subject_path.glob("**/*T2w.nii.gz")]
         else:
-            t2 = self.args.input_t2
+            t2s = [self.args.input_t2, ]
 
         if stage == "hippocampus_t1":
             further_arguments = [
                 f"  segmentHA_T1.sh sub-{self.args.subject} /out",
             ]
-        elif stage == "hippocampus_t2":
+        elif stage == "hippocampus_t2" and len(t2s) > 0:
             further_arguments = [
-                f"  segmentHA_T2.sh sub-{self.args.subject} {t2} T2 1 /out",
+                f"  segmentHA_T2.sh sub-{self.args.subject} {t2s[0]} T2 1 /out",
             ]
         elif stage == "thalamus_t1":
             further_arguments = [
                 f"  segmentThalamicNuclei.sh sub-{self.args.subject} /out",
             ]
-        elif stage == "thalamus_t2":
+        elif stage == "thalamus_t2" and len(t2s) > 0:
             further_arguments = [
-                f"  segmentThalamicNuclei.sh sub-{self.args.subject} {t2}"
+                f"  segmentThalamicNuclei.sh sub-{self.args.subject} {t2s[0]}"
                 " T2 1 /out",
             ]
         elif stage == "brainstem":
