@@ -59,11 +59,19 @@ if [[ -e "$1" ]]; then
     TH="ThN"; else TH="   "
   fi
 
+  # The date of completion
+  TIMEA=$(grep START_TIME "${1}/scripts/recon-all.done")
+  TIMEA=${TIMEA:11}
+  TIMEB=$(grep END_TIME "${1}/scripts/recon-all.done")
+  TIMEB=${TIMEB:9}
+  DATE=$(date --date="${TIMEB}" "+%Y-%m-%d %H:%M")
+
+  # Calculate some metadata
   COUNT=$(ls -1R ${1} | wc -l)
   SIZE=$(du -sh ${1})
 
   REALPATH=$(realpath "${1}")
-  echo "${REALPATH##*/}: ${SIZE%%$'\t'*} in ${COUNT} files |  ${T1}  ${T2}  ${CTX}  ${SUB}  ${SUR}  ${HA}  ${BS}  ${TH}"
+  echo "${REALPATH##*/}: ${SIZE%%$'\t'*} in ${COUNT} files |  ${T1}  ${T2}  ${CTX}  ${SUB}  ${SUR}  ${HA}  ${BS}  ${TH} | on ${DATE}"
 else
   echo "${REALPATH##*/}: N/A"
 fi
