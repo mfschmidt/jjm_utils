@@ -6,6 +6,7 @@
 # Specify -v or --verbose for more descriptive output.
 
 # Handle command-line arguments
+FORCE=0
 POSITIONAL=()
 while [[ $# -gt 0 ]]
 do
@@ -24,6 +25,11 @@ case $key in
     ;;
   -s|--subset)
     SUBSET="$2"
+    shift # past argument
+    shift # past value
+    ;;
+  -f|--force)
+    FORCE=1
     shift # past argument
     shift # past value
     ;;
@@ -52,10 +58,15 @@ if [[ -z $OUTPUT_FILE ]]; then
   OUTPUT_FILE=${OUTPUT_FILE}_filter-${SUBSET}.tsv
 fi
 if [[ -f $OUTPUT_FILE ]]; then
-  echo "$OUTPUT_FILE exists and I don't want to overwrite it."
-  echo "Please delete it if you'd like to replace it."
-  echo "Quitting"
-  exit 1
+  if [[ "$FORCE" == "0" ]]; then
+    echo "$OUTPUT_FILE exists, and I don't want to overwrite it."
+    echo "Please delete it if you'd like to replace it."
+    echo "Quitting"
+    exit 1
+  else
+    echo "overwriting $OUTPUT_FILE"
+    rm -f $OUTPUT_FILE
+  fi
 fi
 
 # Read columns available in input confounds file
