@@ -137,7 +137,15 @@ def get_arguments():
     """ Parse command line arguments """
 
     parser = argparse.ArgumentParser(
-        description="Extract regressor columns from confounds file.",
+        description="\n".join([
+            "Extract regressor columns from confounds file.",
+            "",
+            "--level basic   : fd + 6 tCompCors, 6 aCompCors, and 6 motion",
+            "--level curious : <basic> + global + csf + whitematter",
+            "--level motion  : defaults to 6 motion parameters",
+            "                : --motion {6,12,18,24} increases that",
+            "--scrub         : adds however many frames have excess motion",
+        ])
     )
     parser.add_argument(
         "-i", "--input",
