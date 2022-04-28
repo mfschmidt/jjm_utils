@@ -68,8 +68,8 @@ class SlurmBatch():
         """
 
         return [
-            {"host_path": "/run/shm",
-             "cont_path": "/run/shm",
+            {"host_path": "/dev/shm",
+             "cont_path": "/dev/shm",
              "permissions": "rw", },
             {"host_path": "/data",
              "cont_path": "/data",
