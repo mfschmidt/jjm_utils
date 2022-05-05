@@ -564,8 +564,8 @@ def settle_threads(args):
         We only use num_threads, but we'll accept num_cpus as the same thing.
     """
     if args.num_cpus is None and args.num_threads is None:
-        setattr(args, "num_cpus", 8)
-        setattr(args, "num_threads", 8)
+        setattr(args, "num_cpus", 4)
+        setattr(args, "num_threads", 4)
     elif args.num_threads is None:
         setattr(args, "num_cpus", int(args.num_cpus))
         setattr(args, "num_threads", int(args.num_cpus))
