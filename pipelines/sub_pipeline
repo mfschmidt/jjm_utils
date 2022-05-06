@@ -478,7 +478,7 @@ class MRIQCBatch(SlurmBatch):
             f"  --participant-label {self.args.subject}",
             "  -w /work",
             f"  --nprocs {self.args.num_threads}",
-            "  --omp-nthreads 8",
+            "  --omp-nthreads 4",
             f"  --mem_gb {self.args.memory_gb}",
         ])
 
