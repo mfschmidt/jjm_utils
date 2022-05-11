@@ -60,11 +60,15 @@ if [[ -e "$1" ]]; then
   fi
 
   # The date of completion
-  TIMEA=$(grep START_TIME "${1}/scripts/recon-all.done")
-  TIMEA=${TIMEA:11}
-  TIMEB=$(grep END_TIME "${1}/scripts/recon-all.done")
-  TIMEB=${TIMEB:9}
-  DATE=$(date --date="${TIMEB}" "+%Y-%m-%d %H:%M")
+  if [[ -e "${1}/scripts/recon-all.done" ]]; then
+    TIMEA=$(grep START_TIME "${1}/scripts/recon-all.done")
+    TIMEA=${TIMEA:11}
+    TIMEB=$(grep END_TIME "${1}/scripts/recon-all.done")
+    TIMEB=${TIMEB:9}
+    DATE=$(date --date="${TIMEB}" "+%Y-%m-%d %H:%M")
+  else
+    DATE="unfinished"
+  fi
 
   # Calculate some metadata
   COUNT=$(ls -1R ${1} | wc -l)
