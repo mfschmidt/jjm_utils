@@ -889,9 +889,12 @@ def context_is_valid(args):
         print("ERR: 'subject' must be provided on the command line.")
         sub_available = False
     else:
-        sub_available = os.path.exists(
-            os.path.join(args.rawdata, "sub-" + args.subject)
-        )
+        if args.input_t1 == "":
+            sub_available = os.path.exists(
+                os.path.join(args.rawdata, "sub-" + args.subject)
+            )
+        else:
+            sub_available = Path(args.input_t1).exists()
         if not sub_available:
             print("ERR: Cannot find a file at '{}'".format(
                 os.path.join(args.rawdata, "sub-" + args.subject)
