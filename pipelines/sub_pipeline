@@ -225,11 +225,16 @@ class FreeSurferBatch(SlurmBatch):
         if self.args.input_t1 == "":
             t1s = [str(p) for p in self.subject_path.glob("**/*T1w.nii.gz")]
         else:
-            t1s = [Path(self.args.input_t1).resolve(), ]
+            t1s = [str(Path(self.args.input_t1).resolve()), ]
         if self.args.input_t2 == "":
             t2s = [str(p) for p in self.subject_path.glob("**/*T2w.nii.gz")]
         else:
-            t2s = [Path(self.args.input_t2).resolve(), ]
+            t2s = [str(Path(self.args.input_t2).resolve()), ]
+
+        print("T1s")
+        print(t1s)
+        print("T2s")
+        print(t2s)
 
         # Use -cm if sub-1mm voxels are desired.
         cm_str = " -cm" if self.args.cm else ""
@@ -889,16 +894,17 @@ def context_is_valid(args):
         print("ERR: 'subject' must be provided on the command line.")
         sub_available = False
     else:
-        if args.input_t1 == "":
-            sub_available = os.path.exists(
-                os.path.join(args.rawdata, "sub-" + args.subject)
-            )
+        if args.input_t1 != "":
+            expected_T1 = Path(args.input_t1).resolve()
         else:
-            sub_available = Path(args.input_t1).exists()
-        if not sub_available:
-            print("ERR: Cannot find a file at '{}'".format(
-                os.path.join(args.rawdata, "sub-" + args.subject)
-            ))
+            expected_T1 = Path(args.rawdata) / f"sub-{args.subject}"
+        if expected_T1.exists():
+            if args.verbose:
+                print(f"Found specified T1w image at {expected_T1}")
+            sub_available=True
+        else:
+            print(f"ERR: Cannot find a file at '{expected_T1}'")
+            sub_available=False
 
     # Work directory is writable
     if args.work_directory is None:
