@@ -225,11 +225,11 @@ class FreeSurferBatch(SlurmBatch):
         if self.args.input_t1 == "":
             t1s = [str(p) for p in self.subject_path.glob("**/*T1w.nii.gz")]
         else:
-            t1s = [self.args.input_t1, ]
+            t1s = [Path(self.args.input_t1).resolve(), ]
         if self.args.input_t2 == "":
             t2s = [str(p) for p in self.subject_path.glob("**/*T2w.nii.gz")]
         else:
-            t2s = [self.args.input_t2, ]
+            t2s = [Path(self.args.input_t2).resolve(), ]
 
         # Use -cm if sub-1mm voxels are desired.
         cm_str = " -cm" if self.args.cm else ""
