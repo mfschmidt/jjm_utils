@@ -67,7 +67,7 @@ class SlurmBatch():
         """ Return the mounts necessary for running the pipeline
         """
 
-        return [
+        mounts = [
             {"host_path": "/dev/shm",
              "cont_path": "/dev/shm",
              "permissions": "rw", },
@@ -81,6 +81,13 @@ class SlurmBatch():
              "cont_path": "/out",
              "permissions": "rw", },
         ]
+        if (Path(self.args.rawdata) / ".bidsignore").exists():
+            mounts.append({
+                "host_path": str(Path(self.args.rawdata) / ".bidsignore"),
+                "cont_path": "/rawdata/.bidsignore",
+                "permissions": "ro",
+            })
+        return mounts
 
     def singularity_command(self):
         """ Return the singularity command to execute in the sbatch file.
