@@ -28,7 +28,7 @@ done
 
 echo "Found $N_ACTIVE active jobs on host $(hostname)."
 
-ALL_TMP=$(2>/dev/null ls -1d /{var/tmp,tmp}/*prep_*_*ing)
+ALL_TMP=$(2>/dev/null ls -1d /{var/tmp,tmp}/*_*_{work,stag}ing)
 REGEX=".*_([0-9]*)_.*ing"
 for TMP in $ALL_TMP; do
   if [[ $TMP =~ $REGEX ]]; then
