@@ -897,6 +897,8 @@ def context_is_valid(args):
             "in ~/.pipelines.json or as --rawdata."
         )
         sub_available = False
+    elif args.rawdata[-1] == "/":
+        args.rawdata = args.rawdata[: -1]
     elif args.subject is None:
         print("ERR: 'subject' must be provided on the command line.")
         sub_available = False
