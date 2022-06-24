@@ -22,7 +22,7 @@ Acquisition = namedtuple(
     " ".join([
         'scan_type', 'path', 'direction', 'run', 'task', 'modality',
         'SeriesNumber', 'TaskName', 'SeriesDescription', 'AcquisitionTime',
-        'IntendedFor',
+        'PhaseEncodingDirection', 'IntendedFor', 'EventsFile'
     ])
 )
 
@@ -32,11 +32,19 @@ def gather_acquisitions(session_path, scan_type='all'):
         Return the list of acquisitions as named tuples.
     """
 
-    # Find the files to look into
+    # Find the files to look into, ignoring any post-added events files
     if scan_type == 'all':
-        json_files = pathlib.Path(session_path).glob("*/sub-*.json")
+        json_files = [
+            f for f
+            in pathlib.Path(session_path).glob("*/sub-*.json")
+            if "events" not in f.name
+        ]
     else:
-        json_files = pathlib.Path(session_path).glob(scan_type + "/sub-*.json")
+        json_files = [
+            f for f
+            in pathlib.Path(session_path).glob(scan_type + "/sub-*.json")
+            if "events" not in f.name
+        ]
 
     # One pass, just gather data for each acquisition
     acquisitions = []
@@ -46,6 +54,11 @@ def gather_acquisitions(session_path, scan_type='all'):
         dir_match = re.search(r"_dir-([a-z]*)_", str(file.name))
         task_match = re.search(r"_task-([a-z]*)_", str(file.name))
         modality_match = re.search(r"_([A-Za-z0-9]+)\.json$", str(file.name))
+        if "_bold.json" in file.name:
+            events_filename = file.name.replace("_bold.json", "_events.tsv")
+        else:
+            events_filename = "NONEXISTENT_FILE.NOT_TO_BE_FOUND"
+
         metadata = json.load(open(file, "r"))
         acquisitions.append(Acquisition(
             scan_type=file.parent.name,
@@ -61,10 +74,12 @@ def gather_acquisitions(session_path, scan_type='all'):
                 metadata.get('AcquisitionTime', "00:00:00.000000"),
                 "%H:%M:%S.%f"
             ),
+            PhaseEncodingDirection=metadata.get('PhaseEncodingDirection', None),
             IntendedFor=[
                 file.parent.parent.parent / p
                 for p in metadata.get('IntendedFor', [])
             ],
+            EventsFile=(file.parent / events_filename).exists(),
         ))
 
     return acquisitions
@@ -90,7 +105,7 @@ def find_field_map_for(func_file, field_maps):
         run_str = f"{found[0].run:02d}" if found[0].run else "01"
         return (
             len(found),
-            f"{red_on}{found[0].dir}-{run_str}{color_off}"
+            f"{red_on}{found[0].direction}-{run_str}{color_off}"
         )
     elif len(found) > 2:
         return (
@@ -172,6 +187,23 @@ def rename_misordered(tasks):
                   f"{color_off}")
 
 
+def rename_jsonnews(tasks):
+    """ Rename files in tasks, and these should overwrite original jsons.
+    """
+
+    # For each pair, the "to" file probably already exists.
+    # We use two passes to name them all temporarily, then name them back.
+
+    # Pass one, clear the deck by renaming all bad files
+    for i, task in enumerate(tasks):
+        if task.get("good_data").exists():
+            task.get("good_data").replace(task.get("good_name"))
+            print(f"{green_on}"
+                  f"\u2714 {task.get('good_data').name} "
+                  f"\u279e {task.get('good_name').name}"
+                  f"{color_off}")
+
+
 def fill_in_tasknames(items):
     """ Each item has a file and a TaskName for insertion; insert them.
     """
@@ -185,6 +217,26 @@ def fill_in_tasknames(items):
             json.dump(data, open(item.get("file"), "w"), indent=4)
             print(f"{green_on}\u2714 "
                   f"Wrote '\"TaskName\": \"{item.get('TaskName')}\"' "
+                  f"\u279e {item.get('file')}"
+                  f"{color_off}")
+        else:
+            print(f"{red_on}\u2718 "
+                  f"File '{item.get('file')}' doesn't exist.{color_off}")
+
+
+def fill_in_peds(items):
+    """ Each item has a file and a TaskName for insertion; insert them.
+    """
+
+    for item in items:
+        if item.get('file', None) is None:
+            print(f"{red_on}\u2718 No json file{color_off}")
+        elif item.get('file').exists():
+            data = json.load(open(item.get("file"), "r"))
+            data["PhaseEncodingDirection"] = item.get("PhaseEncodingDirection")
+            json.dump(data, open(item.get("file"), "w"), indent=4)
+            print(f"{green_on}\u2714 "
+                  f"Wrote '\"PhaseEncodingDirection\": \"{item.get('PhaseEncodingDirection')}\"' "
                   f"\u279e {item.get('file')}"
                   f"{color_off}")
         else:
@@ -242,11 +294,16 @@ def main(args):
 
     files_to_rename = []
     tasknames_to_add = []
+    jsonnews_to_rename = []
+    peds_to_add = []
 
     if args.verbose:
+        modality_str = args.modality
+        if args.modality != "all":
+            modality_str = f"just {args.modality}"
         print("Looking at {}, {}{}.".format(
             args.path,
-            f"just {args.modality} modalities",
+            f"{modality_str} modalities",
             ", fixing if possible." if args.fix else "",
         ))
 
@@ -276,6 +333,7 @@ def main(args):
     num_misordered = 0
     num_fieldmap_problems = 0
     num_taskname_missing = 0
+    num_phase_problems = 0
     if args.verbose:
         print(" SN  A_TIME  BIDS   exp  TYPE FILE")
         print("---  ------  ------      ---- ----")
@@ -332,17 +390,45 @@ def main(args):
             intfor_str = f" ({fmap_str})"
             num_fieldmap_problems += num_bad
 
+        # Determine the existence of "PhaseEncodeDirection" in fmaps
+        ped_str = ""
+        if acquisition.scan_type == "fmap":
+            if acquisition.PhaseEncodingDirection is None:
+                num_phase_problems += 1
+                ped_str = f" ({red_on}no PED{color_off})"
+                peds_to_add.append({
+                    "file": acquisition.path,
+                    "PhaseEncodingDirection": "?",
+                })
+
+        # Determine if an events.tsv file accompanies the bold file.
+        event_str = ""
+        if acquisition.scan_type == "func":
+            if acquisition.task != "rest":
+                if acquisition.EventsFile:
+                    event_str = f" ({green_on}+e{color_off})"
+                else:
+                    event_str = f" ({red_on}-e{color_off})"
+
         # Ensure all tasks have TaskName field
         taskname_str = ""
         if acquisition.scan_type == "func":
             if acquisition.task is not None:
                 if acquisition.TaskName == "":
-                    taskname_str += f" ({red_on}no TaskName{color_off})"
+                    alt = acquisition.path.name.replace("json", "json_new")
+                    if (acquisition.path.parent / alt).exists():
+                        taskname_str += f" ({red_on}TaskName in json_new{color_off})"
+                        jsonnews_to_rename.append({
+                            "good_name": acquisition.path,
+                            "good_data": acquisition.path.parent / alt,
+                        })
+                    else:
+                        taskname_str += f" ({red_on}no TaskName{color_off})"
+                        tasknames_to_add.append({
+                            "file": acquisition.path,
+                            "TaskName": acquisition.SeriesDescription,
+                        })
                     num_taskname_missing += 1
-                    tasknames_to_add.append({
-                        "file": acquisition.path,
-                        "TaskName": acquisition.SeriesDescription,
-                    })
 
         # Report on findings
         if args.verbose:
@@ -357,13 +443,14 @@ def main(args):
             else:
                 run_str = f"{green_on}{run_str}{color_off}"
 
-            print("#{:>2d}  @{}  {} ({})  {:<4} {}{}{}".format(
+            print("#{:>2d}  @{}  {} ({})  {:<4} {}{}{}{}{}".format(
                 acquisition.SeriesNumber,
                 datetime.strftime(acquisition.AcquisitionTime, '%H:%M'),
                 run_str, expectation,
                 acquisition.scan_type,
                 acquisition.path.name,
                 intfor_str, taskname_str,
+                event_str, ped_str
             ))
         highest_run[sequence_key] = expectation
 
@@ -410,6 +497,11 @@ def main(args):
                 print(f" \u2022 rename {str(bad_file.get('from'))}")
                 print(f"       to {str(bad_file.get('to'))}")
             rename_misordered(files_to_rename)
+        if len(jsonnews_to_rename) > 0:
+            print("Renaming jsonnew files to overwrite jsons:")
+            for jsonnew in jsonnews_to_rename:
+                print(f" \u2022 rename \"{str(jsonnew['good_data'].name)}\"")
+            rename_jsonnews(jsonnews_to_rename)
         if len(tasknames_to_add) > 0:
             print("Inserting TaskName fixes:")
             for light_file in tasknames_to_add:
@@ -418,6 +510,14 @@ def main(args):
                 ))
                 print(f"     into {light_file.get('file')}")
             fill_in_tasknames(tasknames_to_add)
+        if len(peds_to_add) > 0:
+            print("Inserting PhaseEncodingDirection fixes:")
+            print("    not actually fixing, just keeping BIDS validator quiet")
+            print("    you should manually fix this field.")
+            for light_file in peds_to_add:
+                print(" \u2022 insert '\"PhaseEncodingDirection\": \"?\"'")
+                print(f"     into {light_file.get('file')}")
+            fill_in_peds(peds_to_add)
         if num_fieldmap_problems > 0:
             print(f"No way to fix {num_fieldmap_problems} missing fmaps.")
 
