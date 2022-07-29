@@ -14,13 +14,13 @@ SRC_FILES=\
 "pipelines/sub_{pipeline,fmriprep,qsiprep,mriqc,feat,freesurfer} \
  pipelines/cleanup_tmp.sh \
  pipelines/inventory_rawdata \
- mri/{make_masks,mridims,fsinv,extract_copes_per_mask.py} \
+ mri/{make_masks,mridims,fsinv,extract_copes_per_mask.py,extract_conte_events.py,bids_events_to_feat.py,diff_json,check_session} \
  confounds/filter_confounds.{py,sh}"
 TGT_FILES=\
 "${DEST}/sub_{pipeline,fmriprep,qsiprep,mriqc,feat,freesurfer} \
  ${DEST}/cleanup_tmp.sh \
  ${DEST}/inventory_rawdata \
- ${DEST}/{make_masks,mridims,fsinv,extract_copes_per_mask.py} \
+ ${DEST}/{make_masks,mridims,fsinv,extract_copes_per_mask.py,extract_conte_events.py,bids_events_to_feat.py,diff_json,check_session} \
  ${DEST}/filter_confounds.{py,sh}"
 
 ssh ${1} "
