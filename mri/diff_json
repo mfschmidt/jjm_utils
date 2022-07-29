@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+
+
+# check_session.py
+
+import sys
+import json
+import argparse
+from pathlib import Path
+
+
+# Trigger printing in red to highlight problems
+red_on = '\033[91m'
+green_on = '\033[92m'
+color_off = '\033[0m'
+
+
+def get_arguments():
+    """ Define and parse command line arguments.
+    """
+
+    parser = argparse.ArgumentParser(
+        description="""
+            Compare two json files that may have key:value pairs in different
+            orders.
+            Default is only report differences.
+            For complete comparison, use --verbose.
+        """,
+    )
+    parser.add_argument(
+        "src",
+        help="The source json file",
+    )
+    parser.add_argument(
+        "cmp",
+        help="The comparison json file",
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="set to trigger verbose output",
+    )
+
+    return parser.parse_args()
+
+
+def ordered(obj):
+    if isinstance(obj, dict):
+        return sorted((k, ordered(v)) for k, v in obj.items())
+    if isinstance(obj, list):
+        return sorted(ordered(x) for x in obj)
+    else:
+        return obj
+
+
+def main(args):
+    """ Entry point """
+
+    # Ensure files exist
+    files_exist = True
+    if not Path(args.src).exists():
+        print(f"{args.src} does not exist.")
+        files_exist = False
+    if not Path(args.cmp).exists():
+        print(f"{args.cmp} does not exist.")
+        files_exist = False
+    if not files_exist:
+        # Can't compare files we can't find, bail out
+        return 1
+
+    src = json.load(open(args.src, "r"))
+    cmp = json.load(open(args.cmp, "r"))
+
+    all_keys = set()
+    for k, v in src.items():
+        all_keys.add(k)
+    for k, v in cmp.items():
+        all_keys.add(k)
+
+    matched_keys = 0
+    for k in sorted(all_keys):
+        if (k in src) and (k in cmp):
+            if ordered(src[k]) == ordered(cmp[k]):
+                matched_keys += 1
+                if args.verbose:
+                    print(f"{green_on}   |{color_off} {k}: {src[k]}")
+            else:
+                print(f"{red_on}<< |{color_off} {k}: {src[k]}")
+                print(f"{red_on} >>|{color_off} {k}: {cmp[k]}")
+        elif k in src:
+            print(f"{red_on}<< |{color_off} {k}: {src[k]}")
+        elif k in cmp:
+            print(f"{red_on} >>|{color_off} {k}: {cmp[k]}")
+
+    if args.verbose:
+        print(f"{matched_keys:,} keys matched in both files.")
+
+    # Nothing died, return a success code.
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(get_arguments()))
