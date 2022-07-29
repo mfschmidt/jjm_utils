@@ -177,6 +177,7 @@ def main(args):
 
     if args.mask is None:
         masks = sorted(args.mask_path.glob("res-bold_*.nii.gz"))
+        print(f"Found {len(masks)} masks in {str(args.mask_path)}:")
     elif isinstance(args.mask, list):
         masks = args.mask
     else:
@@ -188,6 +189,7 @@ def main(args):
     if args.cope is None:
         copes = list(args.cope_path.glob("cope*.nii.gz"))
         copes.sort(key=lambda x: int(str(x.name)[4: -7]))
+        print(f"Found {len(copes)} copes in {str(args.cope_path)}:")
     else:
         copes = [args.cope, ]
     if args.verbose:
@@ -224,11 +226,12 @@ def main(args):
 
             lbls, ns = np.unique(mask_data, return_counts=True)
             if len(lbls) == 1:
+                # An empty mask (all 0) has little value
                 if args.verbose:
                     print("  mask is useless, all values are {ns[0]}")
             elif len(lbls) == 2:
                 if args.verbose:
-                    print("  mask looks binary")
+                    print(f"  mask looks binary ({len(lbls)} labels)")
                     print(f"    {ns[0]:,} {lbls[0]} and {ns[1]:,} {lbls[1]}")
                 for lbl in lbls:
                     if lbl != 0:
@@ -242,16 +245,29 @@ def main(args):
                 # Currently, the smallest probabilistic atlas contains
                 # 37 voxels. The largest labelled atlas contains 19 regions.
                 if args.verbose:
-                    print("  mask looks probabilistic")
+                    print(f"  mask looks probabilistic ({len(lbls)} labels)")
+
                 voxels = extract_voxels_by_threshold(
                     cope_data, mask_data, args.threshold
                 )
+                if len(voxels) > 0:
+                    if args.verbose:
+                        print(f"  found {len(voxels)} voxels")
+                else:
+                    if args.verbose:
+                        print(f"  No voxels meet {args.threshold} threshold!!")
+                    # Even with no voxels, the empty mask still must be
+                    # represented in the dataset, so make a placeholder.
+                    voxels = pd.DataFrame([{
+                        'label': lbls[0], 'value': np.NaN,
+                        'x': np.NaN, 'y': np.NaN, 'z': np.NaN,
+                    }, ])
                 voxels['cope'] = cope.name[: -7]
                 voxels['mask'] = mask.name[: -7]
                 voxelwise_dataframes.append(voxels)
             else:
                 if args.verbose:
-                    print("  mask looks like numeric labels")
+                    print(f"  mask looks like {len(lbls)} numeric labels")
                 for lbl, n in zip(lbls, ns):
                     if args.verbose:
                         print(f"    mask label {lbl} has {n} voxels")
@@ -292,12 +308,20 @@ def main(args):
     means.name = 'mean'
     sds = grouping.std()
     sds.name = 'sd'
+
     # While sorted by cope_num and mask, lock in the index.
     stats_dataframe = pd.concat([means, sds, counts, ], axis=1).reset_index()
     stats_dataframe['subject'] = args.subject_id
     stats_dataframe['cope'] = stats_dataframe['cope_num'].apply(
         lambda x: f"cope{x}"
     )
+
+    # But we saved empty masks, and don't want them to say they have 1 voxel.
+    stats_dataframe['n'] = stats_dataframe.apply(
+        lambda row: 0 if np.isnan(row['mean']) else row['n'], axis=1,
+    )
+
+    # Save to disk
     stats_dataframe[
         ['subject', 'cope', 'mask', 'n', 'mean', 'sd', ]
     ].sort_index().to_csv(
