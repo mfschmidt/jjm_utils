@@ -2,6 +2,9 @@
 
 # This script can be used to 'install' jjm_utils scripts and wrappers to each node.
 
+# It is assumed this jjm_utils is extracted to ~/ on every node.
+# This assumption allows the command to work on all nodes over ssh.
+
 #  for NODE in a b c; do ./update_and_install.sh ${NODE}; done
 
 DEST="/usr/local/bin"
@@ -12,15 +15,15 @@ if [[ "$1" != "" ]]; then
 fi
 SRC_FILES=\
 "pipelines/sub_{pipeline,fmriprep,qsiprep,mriqc,feat,freesurfer} \
- pipelines/cleanup_tmp.sh \
- pipelines/inventory_rawdata \
- mri/{make_masks,mridims,fsinv,extract_copes_per_mask.py,extract_conte_events.py,bids_events_to_feat.py,diff_json,check_session} \
+ pipelines/{cleanup_tmp.sh,inventory_rawdata,validate} \
+ mri/{make_masks,mridims,fsinv,diff_json,check_session} \
+ mri/{extract_copes_per_mask.py,widen_cope_stats.py,extract_conte_events.py,bids_events_to_feat.py} \
  confounds/filter_confounds.{py,sh}"
 TGT_FILES=\
 "${DEST}/sub_{pipeline,fmriprep,qsiprep,mriqc,feat,freesurfer} \
- ${DEST}/cleanup_tmp.sh \
- ${DEST}/inventory_rawdata \
- ${DEST}/{make_masks,mridims,fsinv,extract_copes_per_mask.py,extract_conte_events.py,bids_events_to_feat.py,diff_json,check_session} \
+ ${DEST}/{cleanup_tmp.sh,inventory_rawdata,validate} \
+ ${DEST}/{make_masks,mridims,fsinv,diff_json,check_session} \
+ ${DEST}/{extract_copes_per_mask.py,widen_cope_stats.py,extract_conte_events.py,bids_events_to_feat.py} \
  ${DEST}/filter_confounds.{py,sh}"
 
 ssh ${1} "
