@@ -1,0 +1,9 @@
+#!/bin/bash
+
+if [[ "${1}" == "" ]]; then
+  echo "What path would you like to validate?"
+  echo "Try 'validate /data/BI/human/rawdata/project' or something like that."
+  exit 1
+elif [[ -d "${1}" ]]; then
+  docker run -it --rm -v ${1}:/data:ro bids/validator /data
+fi
