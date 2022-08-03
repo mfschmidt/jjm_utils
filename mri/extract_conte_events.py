@@ -77,7 +77,7 @@ def get_arguments():
 
     if (parsed_args.subject != "None") and (parsed_args.session == "None"):
         setattr(parsed_args, "session",
-                find_session(parsed_args.subject, rawdata=args.rawdata))
+                find_session(parsed_args.subject, rawdata=parsed_args.rawdata))
 
     if parsed_args.subject == "None":
         print(f"{RED_ON}"
@@ -865,7 +865,7 @@ def finalize_dataframe(df, offsets, verbose=False):
         if (i < len(df) - 1) and (df.loc[i, 'duration'] == 0.0):
             df.loc[i, 'duration'] = df.loc[i + 1, 'onset'] - df.loc[i, 'onset']
 
-        # In the 6 second gaps where the Arrows instructions go, add that block
+        # In the 6 second gaps where the Arrows directions go, add that block
         if (i < len(df) - 1) and \
            (df.loc[i, 'trial_type'] == 'question') and \
            (df.loc[i + 1, 'trial_type'] == 'arrow'):
@@ -873,9 +873,9 @@ def finalize_dataframe(df, offsets, verbose=False):
             additions.append({
                 "onset": ai_onset_estimate,
                 "duration": df.loc[i + 1, 'onset'] - ai_onset_estimate,
-                "trial_type": "instructions",
+                "trial_type": "directions",
                 "response_time": "n/a",
-                "stimulus": "instructions",
+                "stimulus": "arrows directions",
                 "response": "n/a",
             })
 
