@@ -46,7 +46,15 @@ def get_arguments():
         help="By default '1' will be written in the third column."
              "specify '--use-response question' to use the response "
              "to the 'question' trial_type in the third column of "
-             "the output timing file."
+             "the output timing file. Be careful and review your data "
+             "because any 'nan' values will be treated as 1. This may "
+             "not be appropriate for your models."
+    )
+    parser.add_argument(
+        "--long-name", action="store_true",
+        help="By default, text files are written with short names, "
+             "but setting this to true causes text files to be written "
+             "with full bids key-value pairs for sub, ses, task, run."
     )
     parser.add_argument(
         "--verbose", action="store_true",
@@ -100,7 +108,13 @@ def main(args):
     for idx, row in data.iterrows():
         # Extract just the data we need for our smaller feat-friendly file.
         if row['trial_type'] in args.use_response:
-            third_value = int(row['response'])
+            try:
+                third_value = int(row['response'])
+            except ValueError:
+                third_value = 1
+                print(f"  WARNING: converted '{row['response']}' as response "
+                      f"to '{row['trial_type']}':'{row['stimulus']}' "
+                      f"in '{str(args.events_file)}' to a 1 value for Feat.")
         else:
             third_value = 1
         if args.shift > 0.0:
@@ -125,7 +139,10 @@ def main(args):
             else:
                 group_name = "_".join([
                     row['trial_type'],
-                    "".join([c for c in row['stimulus'].lower() if c.isalpha()]),
+                    "-".join([
+                        "stimulus",
+                        "".join([c for c in row['stimulus'].lower() if c.isalpha()]),
+                    ]),
                 ])
         else:
             group_name = row['trial_type']
@@ -155,13 +172,33 @@ def main(args):
         relevant_data = pd.DataFrame(timing_tables[group_name])[
             ['onset', 'duration', 'value']
         ].sort_values('onset')
-        filename = "_".join([
-            f"sub-{metadata['sub']}",
-            f"task-{metadata['task']}",
-            f"run-{metadata['run']}",
-            f"trial-{group_name}",
-            "events",
-        ]) + ".txt"
+
+        orig_trial_type = group_name.split("_")[0]
+        if orig_trial_type in args.as_block:
+            descriptor = "blocks"
+        else:
+            descriptor = "events"
+        if orig_trial_type in args.use_response:
+            weight = "as-responses"
+        else:
+            weight = "as-ones"
+
+        if args.long_name:
+            filename = "_".join([
+                f"sub-{metadata['sub']}",
+                f"task-{metadata['task']}",
+                f"run-{metadata['run']}",
+                f"trial-{group_name}",
+                weight,
+                descriptor,
+            ]) + ".txt"
+        else:
+            filename = "_".join([
+                f"trial-{group_name}",
+                weight,
+                descriptor,
+            ]) + ".txt"
+
         relevant_data.to_csv(
             Path(args.output_path) / filename,
             sep='\t', index=None, header=None, float_format="%.3f",
