@@ -72,7 +72,8 @@ def main(args):
         print(df)
     
     # Iterate over rows of input data, extracting specific columns
-    for idx, row in df.sort_values(['cope', 'mask', ]).iterrows():
+    df['cope_number'] = df['cope'].str.replace("cope", "").astype(int)
+    for idx, row in df.sort_values(['cope_number', 'mask', ]).iterrows():
         region_means[f"{row['cope']}_{row['mask'][9:]}"] = row['mean']
         voxel_counts[f"{row['cope']}_{row['mask'][9:]}_voxnum"] = row['n']
 
