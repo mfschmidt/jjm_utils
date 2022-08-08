@@ -76,14 +76,16 @@ def retype_image(image, datatype=np.float64):
     new_img_data = new_img_data.astype(datatype)
     image.set_data_dtype(datatype)
     if image.header['sizeof_hdr'] == 348:
-        new_image = nib.Nifti1Image(
+        return nib.Nifti1Image(
             new_img_data, image.affine, header=image.header
         )
     elif image.header['sizeof_hdr'] == 540:
-        new_image = nib.Nifti2Image(
+        return nib.Nifti2Image(
             new_img_data, image.affine, header=image.header
         )
-    return new_image
+    else:
+        print("ERROR: image neader is neither Nifti1 nor Nifti2!")
+        return None
 
 
 def root_squares_pos(a, b, c):
@@ -119,7 +121,9 @@ def robustify(inv1, inv2, beta):
         MP2RAGErobustfunc = @(INV1, INV2, beta)
             (conj(INV1).*INV2-beta) ./ (INV1.^2 + INV2.^2 + 2*beta);
 
-        :param inv1: the final inv1 image, already cleaned up a bit
+        :param inv1: the inv-1 MP2RAGE image, already cleaned up a bit
+        :param inv2: the unaltered inv-2 MP2RAGE image
+        :param beta: The noise level to clean up, higher is more aggressive
     """
 
     return (
@@ -128,6 +132,18 @@ def robustify(inv1, inv2, beta):
             np.square(inv1) + np.square(inv2) + (2.0 * beta)
         )
     )
+
+
+def threshold_mask(fake_t1w_data, inv2, threshold=100):
+    """ Where values in inv2 < 250, cap fake_t1 at that value """
+
+    new_data = fake_t1w_data.copy()
+    new_data[inv2 < threshold] = -0.50
+    # The following is tempting and seemingly elegant,
+    # but inv2 values range from 0 to 1500; t1w data here range from -0.5 to 0.5,
+    # so will always be lower than inv2, avoiding any change whatsoever.
+    # new_data[inv2 < threshold] = np.minimum(fake_t1w_data, inv2)[inv2 < threshold]
+    return new_data
 
 
 def report_image_stats(img, name):
@@ -141,7 +157,7 @@ def report_image_stats(img, name):
           f"est noise level {img[:, -12:, -12:, ].mean():0.2f}")
 
 
-def plot_steps(steps, range=(-200.0, 200.0)):
+def plot_steps(steps):
     """ Plot a list of steps {"title": title, "img": image} """
 
     fig, axes = plt.subplots(ncols=len(steps), figsize=(4 * len(steps), 4))
@@ -177,11 +193,11 @@ def robust_combination(mp2rage, regularization=1, verbose=True):
         report_image_stats(img_inv2, "Original INV2")
 
     # If values are amenable to it, normalize UNI between -0.5 and +0.5
-    if data_uni.min() >= 0 and data_uni.max() >= 0.51:
+    if np.min(data_uni) >= 0 and np.max(data_uni) >= 0.51:
         # Center values to zero, then divide by the former max,
         # resulting in -0.50 to 0.50 normalized array
         normalized_uni = (
-            (data_uni - (data_uni / 2.0).max()) / data_uni.max()
+            (data_uni - (np.max(data_uni) / 2.0)) / np.max(data_uni)
         )
         uni_was_normalized = True
     else:
@@ -234,9 +250,13 @@ def robust_combination(mp2rage, regularization=1, verbose=True):
         final_inv1, data_inv2, noise_level**2
     )
 
+    masked_phase_sensitive_robust = threshold_mask(
+        phase_sensitive_robust, data_inv2,
+    )
+
     if uni_was_normalized:
         # Normalize image back to (0 to 4095) from (-0.5 to +0.5)
-        phase_sensitive_t1w = 4095.0 * (phase_sensitive_robust + 0.5)
+        phase_sensitive_t1w = 4095.0 * (masked_phase_sensitive_robust + 0.5)
         phase_sensitive_img = retype_image(
             nib.Nifti1Image(
                 phase_sensitive_t1w, img_uni.affine, header=img_uni.header
@@ -246,7 +266,7 @@ def robust_combination(mp2rage, regularization=1, verbose=True):
     else:
         phase_sensitive_img = retype_image(
             nib.Nifti1Image(
-                phase_sensitive_robust, img_uni.affine, header=img_uni.header
+                masked_phase_sensitive_robust, img_uni.affine, header=img_uni.header
             ),
             datatype=np.float32,
         )
