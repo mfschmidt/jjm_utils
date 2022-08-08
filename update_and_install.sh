@@ -24,7 +24,7 @@ TGT_FILES=\
  ${DEST}/{cleanup_tmp.sh,inventory_rawdata,validate} \
  ${DEST}/{make_masks,mridims,fsinv,diff_json,check_session} \
  ${DEST}/*.py \
- ${DEST}/filter_confounds.{py,sh}"
+ ${DEST}/filter_confounds.sh"
 
 ssh ${1} "
 cd ~/jjm_utils
