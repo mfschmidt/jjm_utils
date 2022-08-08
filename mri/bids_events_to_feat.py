@@ -51,6 +51,25 @@ def get_arguments():
              "not be appropriate for your models."
     )
     parser.add_argument(
+        "--move-response-to", action='append', default=[],
+        help="See --move-response-from - these must be used together."
+    )
+    parser.add_argument(
+        "--move-response-from", action='append', default=[],
+        help="If a stimulus is provided in one event, but you want to "
+             "describe that stimulus with a response to a later event, "
+             "like a question asking about the initial stimulus, you can "
+             "specify the trial_type for reading the response value with "
+             "--move-response-from and the location for writing it with "
+             "--move-response-to. Both arguments must be supplied to use "
+             "this feature. This feature causes --use-response to be "
+             "ignored. And because only one event can "
+             "be set at a time, this feature only writes out the file for "
+             "the the event specified. For each event matching "
+             "--move-response-to, the response value from the next event "
+             "in temporal order matching --move-response-from will be used."
+    )
+    parser.add_argument(
         "--long-name", action="store_true",
         help="By default, text files are written with short names, "
              "but setting this to true causes text files to be written "
@@ -61,7 +80,31 @@ def get_arguments():
         help="set to trigger verbose output",
     )
 
+    # TODO: implement --move-response-from and --move-response-to
+    # TODO: it must respect stimulus, too, to select one of the two question trial_types
+
     return parser.parse_args()
+
+
+def trial_type_plus_stimulus(trial_type, stimulus):
+    """ Create a unique safe identifier combining trial_type and stimulus.
+
+        :param str trial_type:
+            The trial_type label
+        :param str stimulus:
+            The stimulus label, will have all non-alpha characters stripped
+        :returns:
+            A concatenation of trial_type and stimulus, separated by an
+            underscore, and stimulus keyed by 'stimulus-'
+    """
+
+    return "_".join([
+        trial_type,
+        "-".join([
+            "stimulus",
+            "".join([c for c in stimulus.lower() if c.isalpha()]),
+        ]),
+    ])
 
 
 def main(args):
@@ -78,36 +121,69 @@ def main(args):
     # Check some assumptions
     available_trial_types = list(data['trial_type'].unique())
 
-    def print_trial_types():
-        print("       Available trial_types:")
-        for t in available_trial_types:
-            print(f"       - {t}")
-
+    # If any of the options specifies a trial_type that does not exist,
+    # set the error_response, then when all options are checked, we can
+    # print available trial_types just once, and exit
+    error_response = 0
     for block_name in args.as_block:
         if block_name not in available_trial_types:
             print(f"ERROR: Trial type '{block_name}' requested to be grouped "
                   "into a single block, but no events match this trial_type. ")
-            print_trial_types()
-            sys.exit(1)
+            error_response = 1
     for stimulus in args.split_on_stimulus:
         if stimulus not in available_trial_types:
             print(f"ERROR: Trial type '{stimulus}' requested to be split "
                   "into separate trial types, but no events match this trial_type. ")
-            print_trial_types()
-            sys.exit(2)
+            error_response = 2
     for stimulus in args.use_response:
         if stimulus not in available_trial_types:
             print(f"ERROR: Trial type '{stimulus}' requested to be quantified "
                   "with response values, but no events match this trial_type. ")
-            print_trial_types()
-            sys.exit(3)
+            error_response = 3
+    if len(args.move_response_from) > 0:
+        if len(args.move_response_to) == 0:
+            if args.move_response_from[0] not in available_trial_types:
+                print(f"ERROR: Trial type '{args.move_response_from[0]}' "
+                      "specified as the source of response data, "
+                      "but no events match this trial_type. ")
+                error_response = 4
+            print("ERROR: Specifying --move-response-from requires that you also "
+                  "specify --move-response-to, but it has no trial_types.")
+        else:
+            if args.move_response_to[0] not in available_trial_types:
+                print(f"ERROR: Trial type '{args.move_response_to[0]}' "
+                      "specified to get another event's responses, "
+                      "but no events match this trial_type. ")
+                error_response = 6
+            # If multiple levels are specified in either of these 'move'
+            # arguments, make sure they get combined appropriately to
+            # discriminate between them.
+            if len(args.move_response_to) > 1:
+                args.split_on_stimulus.append(args.move_response_to[0])
+            if len(args.move_response_from) > 1:
+                args.split_on_stimulus.append(args.move_response_from[0])
+    else:
+        if len(args.move_response_to) > 0:
+            if args.move_response_to[0] not in available_trial_types:
+                print(f"ERROR: Trial type '{args.move_response_to[0]}' "
+                      "specified to get another event's responses, "
+                      "but no events match this trial_type. ")
+                error_response = 5
+            print("ERROR: Specifying --move-response-to requires that you also "
+                  "specify --move-response-from, but it has no trial_types.")
+
+    if error_response > 0:
+        print("       Available trial_types:")
+        for t in available_trial_types:
+            print(f"       - {t}")
+        sys.exit(error_response)
 
     # Separate trial_type events, but in a way that separates blocks if needed
     timing_tables = {}
     last_trial_type = ''
     for idx, row in data.iterrows():
         # Extract just the data we need for our smaller feat-friendly file.
-        if row['trial_type'] in args.use_response:
+        if row['trial_type'] in args.use_response + args.move_response_from:
             try:
                 third_value = int(row['response'])
             except ValueError:
@@ -137,13 +213,8 @@ def main(args):
                 # ignore stimulus, just worry about trial_type
                 group_name = row['trial_type']
             else:
-                group_name = "_".join([
-                    row['trial_type'],
-                    "-".join([
-                        "stimulus",
-                        "".join([c for c in row['stimulus'].lower() if c.isalpha()]),
-                    ]),
-                ])
+                group_name = trial_type_plus_stimulus(row['trial_type'],
+                                                      row['stimulus'])
         else:
             group_name = row['trial_type']
 
