@@ -22,9 +22,6 @@ RED_ON = '\033[91m'
 GREEN_ON = '\033[92m'
 COLOR_OFF = '\033[0m'
 
-bids_columns = ['onset', 'duration', 'trial_type',
-                'response_time', 'stimulus', 'response', ]
-
 
 def get_arguments():
     """ Parse command line arguments """
@@ -39,7 +36,7 @@ def get_arguments():
         help="the events file, could be xlsx or txt",
     )
     parser.add_argument(
-        "output_path",
+        "output_dir",
         help="where to write out the tsv and json files",
     )
     parser.add_argument(
@@ -65,9 +62,9 @@ def get_arguments():
 
     parsed_args = parser.parse_args()
 
-    # Figure out subject and session from output_path
-    Path(parsed_args.output_path).mkdir(parents=True, exist_ok=True)
-    for path_piece in str(parsed_args.output_path).split("/"):
+    # Figure out subject and session from output_dir
+    Path(parsed_args.output_dir).mkdir(parents=True, exist_ok=True)
+    for path_piece in str(parsed_args.output_dir).split("/"):
         if path_piece.startswith("sub-"):
             if parsed_args.subject == "None":
                 setattr(parsed_args, "subject", path_piece[4:])
@@ -81,7 +78,7 @@ def get_arguments():
 
     if parsed_args.subject == "None":
         print(f"{RED_ON}"
-              f"Can't determine subject in '{parsed_args.output_path}'"
+              f"Can't determine subject in '{parsed_args.output_dir}'"
               f"{COLOR_OFF}")
         print(f"{RED_ON}"
               "Outputs will NOT be BIDS compatible without sub- and ses-."
@@ -91,7 +88,7 @@ def get_arguments():
               f"{COLOR_OFF}")
     if parsed_args.session == "None":
         print(f"{RED_ON}"
-              f"Can't determine session in '{parsed_args.output_path}'"
+              f"Can't determine session in '{parsed_args.output_dir}'"
               f"{COLOR_OFF}")
         print(f"{RED_ON}"
               "Outputs will NOT be BIDS compatible without sub- and ses-."
@@ -834,6 +831,9 @@ def frames_to_dataframe(task, frames, verbose=False):
             # No need to report it as it's not a problem.
             # print(f"  Frame {i}, line {frame['line']}. 'Running' key not in frame.")
 
+    if verbose:
+        print(f"  collected {len(rows)} frames")
+
     return pd.DataFrame(rows), metadata
 
 
@@ -866,9 +866,11 @@ def finalize_dataframe(df, offsets, verbose=False):
             df.loc[i, 'duration'] = df.loc[i + 1, 'onset'] - df.loc[i, 'onset']
 
         # In the 6 second gaps where the Arrows directions go, add that block
-        if (i < len(df) - 1) and \
-           (df.loc[i, 'trial_type'] == 'question') and \
-           (df.loc[i + 1, 'trial_type'] == 'arrow'):
+        if (
+               (i < len(df) - 1) and
+               (df.loc[i, 'trial_type'] == 'question') and
+               (df.loc[i + 1, 'trial_type'] == 'arrow')
+        ):
             ai_onset_estimate = df.loc[i, 'onset'] + df.loc[i, 'duration'] + 1.0
             additions.append({
                 "onset": ai_onset_estimate,
@@ -911,13 +913,6 @@ def finalize_dataframe(df, offsets, verbose=False):
             lambda onset: sync_df.loc[sync_df[sync_df['t'] < onset]['t'].idxmax(), 'run']
         )
 
-        # Ensure we write out pretty text to the tsv
-        df = df.rename(columns={'onset': '_onset', 'duration': '_duration', 'response_time': '_response_time', })
-        df['onset'] = df['_onset'].apply(lambda t: "n/a" if not isinstance(t, Number) else f"{float(t):0.3f}")
-        df['duration'] = df['_duration'].apply(lambda t: "n/a" if not isinstance(t, Number) else f"{float(t):0.3f}")
-        df['response_time'] = df['_response_time'].apply(
-            lambda t: "n/a" if not isinstance(t, Number) else f"{float(t):0.3f}")
-
     except KeyError as key_error:
         print(f"  ERROR: KeyError {key_error}")
     except ValueError as value_error:
@@ -925,6 +920,89 @@ def finalize_dataframe(df, offsets, verbose=False):
         print(sync_df)
         print("Onsets range: ", df['onset'].min(), df['onset'].max())
     return df
+
+
+def prettify_floats_to_strings(df):
+    """ """
+
+    # Ensure we write out pretty text to the tsv
+    # This converts numerics to strings, so best to do this after all calculations
+    columns = df.columns
+    df = df.rename(columns={'onset': '_onset', 'duration': '_duration', 'response_time': '_response_time', })
+    df['onset'] = df['_onset'].apply(lambda t: "n/a" if not isinstance(t, Number) else f"{float(t):0.3f}")
+    df['duration'] = df['_duration'].apply(lambda t: "n/a" if not isinstance(t, Number) else f"{float(t):0.3f}")
+    df['response_time'] = df['_response_time'].apply(
+        lambda t: "n/a" if not isinstance(t, Number) else f"{float(t):0.3f}")
+    return df[columns]
+
+
+def add_end_of_run_wait_events(df):
+    """ Add 'wait' event when participant completed a run """
+
+    if "waitfornextrun" not in df['trial_type'].unique():
+        last_event = df.loc[df['onset'].idxmax()]
+        end_of_run = last_event['onset'] + last_event['duration']
+        final_event = pd.DataFrame([
+            {
+                "onset": end_of_run + 1.0,
+                "duration": 2.0,  # These are variable, but we lack any data
+                "trial_type": "fixation",
+                "response_time": "n/a",
+                "stimulus": "+",
+                "response": "n/a",
+            },
+            {
+                'onset': end_of_run + 1.0 + 2.0,
+                'duration': (289 * 0.9) - end_of_run - 2.0 - 1.0,
+                'trial_type': "waitfornextrun",
+                'response_time': "n/a",
+                'stimulus': "The next run of the task will begin in a moment.",
+                'response': "n/a",
+            },
+        ])
+        df = pd.concat([df, final_event, ], axis=0, ignore_index=True)
+    return df
+
+
+def split_into_runs(events_data, verbose=False):
+    """ One ePrime file covers multiple fMRI runs; split them out. """
+
+    bids_columns = [
+        'onset', 'duration', 'trial_type',
+        'response_time', 'stimulus', 'response',
+    ]
+    runs = []
+    try:
+        run_nums = sorted(events_data['run'].unique())
+        if verbose:
+            print(f"Found {len(run_nums)} blocks/runs in timing file")
+        for run_num in run_nums:
+            one_run_df = events_data[
+                events_data['run'] == run_num
+            ][
+                bids_columns
+            ].sort_values(by='onset', key=lambda x: x.astype(float))
+            one_run_df = add_end_of_run_wait_events(one_run_df)
+            if verbose:
+                run_start = one_run_df['onset'].astype(float).min()
+                run_end = one_run_df['onset'].astype(float).max()
+                last_duration = float(
+                    one_run_df[
+                        one_run_df['onset'] == run_end
+                    ]['duration'].values[0]
+                )
+                timespan = run_end + last_duration - run_start
+                print(f"  Run {run_num} occupies {timespan:0.1f} seconds "
+                      f"with {len(one_run_df)} events; "
+                      f"earliest event at {run_start:0.2f}s.")
+            runs.append({
+                "run": run_num,
+                "dataframe": prettify_floats_to_strings(one_run_df),
+            })
+    except KeyError as key_error:
+        print(f"  ERROR: {key_error}")
+
+    return runs
 
 
 def extract_txt_timing(filename, shift=0.0, verbose=False):
@@ -952,40 +1030,9 @@ def extract_txt_timing(filename, shift=0.0, verbose=False):
     frames = parse_file(filename, verbose=verbose)
     event_df, md = frames_to_dataframe(task, frames, verbose=verbose)
     event_df = finalize_dataframe(event_df, md, verbose=verbose)
-    event_df['duration'] = event_df['duration'].apply(
-        lambda t: f"{(float(t) - shift):0.3f}"
-    )
+    event_df['onset'] = event_df['onset'] - shift
 
-    runs = []
-    try:
-        run_nums = sorted(event_df['run'].unique())
-        if verbose:
-            print(f"Found {len(run_nums)} blocks/runs in timing file")
-        for run_num in run_nums:
-            one_run_df = event_df[
-                event_df['run'] == run_num
-            ][
-                bids_columns
-            ].sort_values(by='onset', key=lambda x: x.astype(float))
-            runs.append({
-                'run': run_num,
-                'dataframe': one_run_df,
-            })
-            if verbose:
-                run_start = one_run_df['onset'].astype(float).min()
-                run_end = one_run_df['onset'].astype(float).max()
-                last_duration = float(
-                    one_run_df[
-                        one_run_df['onset'] == f"{run_end:0.3f}"
-                    ]['duration'].values[0]
-                )
-                timespan = run_end + last_duration - run_start
-                print(f"  Run {run_num} occupies {timespan:0.1f} seconds; "
-                      f"earliest event at {run_start:0.2f}s.")
-    except KeyError as key_error:
-        print(f"  ERROR: {key_error}")
-
-    return runs
+    return split_into_runs(event_df, verbose=verbose)
 
 
 def extract_xl_timing(xl_file, shift=0.0, verbose=False):
@@ -1043,20 +1090,7 @@ def extract_xl_timing(xl_file, shift=0.0, verbose=False):
     event_df['shift'] = event_df['shift'] - shift
     event_df['onset'] = event_df['onset'] - event_df['shift']
 
-    # Split it into a run for each block.
-    # And save out BIDS-compatible events.tsv files.
-    runs = []
-    for run in sorted(event_df['run'].unique()):
-        one_run_df = event_df[
-            event_df['run'] == run
-        ][
-            bids_columns
-        ].sort_values('onset')
-        runs.append({"run": run, "dataframe": one_run_df, })
-        if verbose:
-            print(f"built run {run} with {len(one_run_df)} events.")
-
-    return runs
+    return split_into_runs(event_df, verbose=verbose)
 
 
 def main(args):
@@ -1068,7 +1102,7 @@ def main(args):
         ))
 
     file = Path(args.events_file)
-    outpath = Path(args.output_path)
+    outpath = Path(args.output_dir)
     if "picture" in file.name:
         # "picture" or "picture_task"
         task = "image"
