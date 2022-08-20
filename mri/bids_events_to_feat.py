@@ -70,18 +70,33 @@ def get_arguments():
              "in temporal order matching --move-response-from will be used."
     )
     parser.add_argument(
+        "--ppi-blocks", action='append', default=[],
+        help="Specify the trial_types to be included as a connected block. "
+             "for ppi analyses. For example, in a memory task with a memory "
+             "event, followed by an instruct event, you would use "
+             "`--ppi-blocks memory instruct` to cause those two events "
+             "to be treated as monolithic blocks. Combine this with "
+             "`--ppi-stimuli`."
+    )
+    parser.add_argument(
+        "--ppi-stimuli", action='append', default=[],
+        help="Specify the stimuli to discriminate `--ppi-blocks`."
+    )
+    parser.add_argument(
         "--long-name", action="store_true",
         help="By default, text files are written with short names, "
              "but setting this to true causes text files to be written "
              "with full bids key-value pairs for sub, ses, task, run."
     )
     parser.add_argument(
-        "--verbose", action="store_true",
+        "-v", "--verbose", action="store_true",
         help="set to trigger verbose output",
     )
 
     # TODO: implement --move-response-from and --move-response-to
     # TODO: it must respect stimulus, too, to select one of the two question trial_types
+
+    # TODO: implement ppi
 
     return parser.parse_args()
 
@@ -107,19 +122,31 @@ def trial_type_plus_stimulus(trial_type, stimulus):
     ])
 
 
-def main(args):
-    """ Entry point """
+def metadata_from_path(path):
+    """ Return all key/value pairs from BIDS path
 
-    if args.verbose:
-        print("Extracting from {}, shifting by {:0.2f} seconds.".format(
-            args.events_file, args.shift,
-        ))
+        :param str path:
+            The full path to an events.tsv file
+        :return dict:
+            A map of key-value pairs found in the BIDS-style path
+    """
 
-    metadata = metadata_from_path(args.events_file)
-    data = pd.read_csv(args.events_file, sep='\t')
+    bids_map = {}
+    pairs = re.findall(r"([A-Za-z0-9]+)-([A-Za-z0-9]+)", path)
+    for pair in pairs:
+        if pair[0] in bids_map:
+            # This is a duplicate, like sub or ses being in path and file
+            if pair[1] != bids_map[pair[0]]:
+                print(f"ERROR: No way to tell if {pair[0]} is "
+                      f"'{pair[1]}' or '{bids_map[pair[0]]}'.")
+        else:
+            bids_map[pair[0]] = pair[1]
 
-    # Check some assumptions
-    available_trial_types = list(data['trial_type'].unique())
+    return bids_map
+
+
+def handle_errors(args, available_trial_types):
+    """ Assess arguments and report any problems with them. """
 
     # If any of the options specifies a trial_type that does not exist,
     # set the error_response, then when all options are checked, we can
@@ -172,11 +199,51 @@ def main(args):
             print("ERROR: Specifying --move-response-to requires that you also "
                   "specify --move-response-from, but it has no trial_types.")
 
+    return error_response
+
+
+def do_ppi():
+    """ Extract events for PPI analyses. """
+
+    pass
+
+
+def do_feat():
+    """ Extract events for FSL Feat analyses. """
+
+    pass
+
+
+def main(args):
+    """ Entry point """
+
+    if args.verbose:
+        print("Extracting from {}, shifting by {:0.2f} seconds.".format(
+            args.events_file, args.shift,
+        ))
+
+    # Load data
+    metadata = metadata_from_path(args.events_file)
+    data = pd.read_csv(args.events_file, sep='\t')
+
+    # Check some assumptions
+    available_trial_types = list(data['trial_type'].unique())
+
+    # Get errors and misformed requests out of the way first
+    error_response = handle_errors(args, available_trial_types)
+
     if error_response > 0:
         print("       Available trial_types:")
         for t in available_trial_types:
             print(f"       - {t}")
         sys.exit(error_response)
+
+    # Figure out whether we need to build standard feat event files or
+    # ppi style files.
+    if len(args.ppi_blocks) > 0:
+        do_ppi()
+    else:
+        do_feat()
 
     # Separate trial_type events, but in a way that separates blocks if needed
     timing_tables = {}
@@ -274,29 +341,6 @@ def main(args):
             Path(args.output_path) / filename,
             sep='\t', index=None, header=None, float_format="%.3f",
         )
-
-
-def metadata_from_path(path):
-    """ Return all key/value pairs from BIDS path
-
-        :param str path:
-            The full path to an events.tsv file
-        :return dict:
-            A map of key-value pairs found in the BIDS-style path
-    """
-
-    bids_map = {}
-    pairs = re.findall(r"([A-Za-z0-9]+)-([A-Za-z0-9]+)", path)
-    for pair in pairs:
-        if pair[0] in bids_map:
-            # This is a duplicate, like sub or ses being in path and file
-            if pair[1] != bids_map[pair[0]]:
-                print(f"ERROR: No way to tell if {pair[0]} is "
-                      f"'{pair[1]}' or '{bids_map[pair[0]]}'.")
-        else:
-            bids_map[pair[0]] = pair[1]
-
-    return bids_map
 
 
 if __name__ == "__main__":
