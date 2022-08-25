@@ -76,7 +76,7 @@ def get_arguments():
         help="subtract this amount from each onset time",
     )
     parser.add_argument(
-        "--as-block", action='append', default=[],
+        "--as-block", nargs='*',
         help="use --as-block for each trial_type that should be aggregated "
              "into a single block, rather than single events. This implies "
              "the use of a dummy numeral 1 for the block."
@@ -118,7 +118,7 @@ def get_arguments():
              "events must be the same to align values properly."
     )
     parser.add_argument(
-        "--ppi-trial-types", action='append', default=[],
+        "--ppi-trial-types", nargs='*',
         help="Specify the trial_types to be included as a connected block. "
              "for ppi analyses. For example, in a memory task with a memory "
              "event, followed by an instruct event, you would use "
@@ -127,7 +127,7 @@ def get_arguments():
              "`--ppi-stimuli`."
     )
     parser.add_argument(
-        "--ppi-stimuli-from", action='append', default=[],
+        "--ppi-stimuli-from",
         help="Specify the stimuli to discriminate `--ppi-trial-types`."
     )
     parser.add_argument(
@@ -143,6 +143,11 @@ def get_arguments():
 
     # Assess/tweak arguments
     parsed_args = parser.parse_args()
+
+    # If nothing is to be blocked, use an empty list rather than None.
+    # This allows loops to simply not run rather than raise exceptions.
+    if parsed_args.as_block is None:
+        parsed_args.as_block = []
 
     # The --use-response argument is essentially a shortcut to implement both
     # --use-response-from and --use-response-to as the same trial_type.
@@ -238,7 +243,7 @@ def handle_errors(args, available_trial_types, available_stimuli):
     return error_response
 
 
-def do_ppi(data, args, verbose=False):
+def do_ppi(data, args):
     """ Extract events for PPI analyses. """
 
     # Separate trial_type events, but in a way that separates blocks if needed
@@ -268,6 +273,8 @@ def do_ppi(data, args, verbose=False):
             cur_event[f"{row['trial_type']}_onset"] = float(row['onset']) - args.shift
             cur_event[f"{row['trial_type']}_duration"] = float(row['duration'])
             cur_event[f"{row['trial_type']}_stimulus"] = row['stimulus']
+            if row['trial_type'] == args.ppi_stimuli_from:
+                cur_event["stimulus"] = row['stimulus']
             cur_event['rows'].append(row['trial_type'])
             if row['trial_type'] in args.ppi_stimuli_from:
                 stimuli.add(row['stimulus'])
@@ -275,50 +282,60 @@ def do_ppi(data, args, verbose=False):
     # Save the final event from the loop, not yet appended
     ppi_events.append(cur_event)
 
-    if verbose:
+    if args.verbose:
         print(f"Found {len(ppi_events)} ppi events.")
 
     # Create the eight (assuming 2 values for each of 3 variables, 2**3) files
-    # we need an all-memory and all-instruct, each with opposite distance/immerse encoding.
-    for trial in trial_types:
-        for stimulus in stimuli:
+    # we need an all-memory and all-instruct,
+    # each with opposite distance/immerse encoding.
+    for trial in sorted(trial_types):
+        # Hackily, we need to know what the 'other' trial is for file naming
+        if trial == sorted(trial_types)[0] and len(trial_types) > 1:
+            off_trial = sorted(trial_types)[1]
+        else:
+            off_trial = sorted(trial_types)[0]
+        for stimulus in sorted(stimuli):
+            # Hackily, we need to know what the 'other' stimulus is for file naming
+            if stimulus == sorted(stimuli)[0] and len(stimuli) > 1:
+                off_stimulus = sorted(stimuli)[1]
+            else:
+                off_stimulus = sorted(stimuli)[0]
             for event in ppi_events:
 
-                # Configure trial-based entries.
-                name = f"trial-{trial}_pos-{stimulus}"
+                # Configure trial-based_'stimulus-all' entries.
+                name = f"trial-{trial}_stimulus-all_pos-{stimulus}_neg-{off_stimulus}"
                 if name not in timing_tables:
                     timing_tables[name] = []
                 timing_tables[name].append({
                     "onset": event[f"{trial}_onset"],
                     "duration": event[f"{trial}_duration"],
-                    "value": 1 if event[f"{trial}_stimulus"] == stimulus else -1,
+                    "value": 1 if event["stimulus"] == stimulus else -1,
                 })
 
-                # Configure stimulus-based entries.
-                for active_trial in args.ppi_stimuli_from:
-                    name = f"stimulus-{stimulus}_pos-{trial}"
-                    if name not in timing_tables:
-                        timing_tables[name] = []
-                    if event[f"{active_trial}_stimulus"] == stimulus:
+                # Configure 'trial-all'_stimulus-based entries.
+                name = f"trial-all_stimulus-{stimulus}_pos-{trial}_neg-{off_trial}"
+                if name not in timing_tables:
+                    timing_tables[name] = []
+                if event["stimulus"] == stimulus:
+                    timing_tables[name].append({
+                        "onset": event[f"{trial}_onset"],
+                        "duration": event[f"{trial}_duration"],
+                        "value": 1,  # obviously (trial == trial)
+                    })
+                    for other_trial in [tt for tt in trial_types if tt != trial]:
                         timing_tables[name].append({
-                            "onset": event[f"{trial}_onset"],
-                            "duration": event[f"{trial}_duration"],
-                            "value": 1,  # obviously (trial == trial)
+                            "onset": event[f"{other_trial}_onset"],
+                            "duration": event[f"{other_trial}_duration"],
+                            "value": -1,  # obviously (other_trial != trial)
                         })
-                        for other_trial in [tt for tt in trial_types if tt != trial]:
-                            timing_tables[name].append({
-                                "onset": event[f"{other_trial}_onset"],
-                                "duration": event[f"{other_trial}_duration"],
-                                "value": -1,  # obviously (other_trial != trial)
-                            })
 
-    if verbose:
+    if args.verbose:
         print(f"Created {len(timing_tables)} ppi tables for saving.")
 
     return timing_tables
 
 
-def do_feat(data, args, verbose=False):
+def do_feat(data, args):
     """ Extract events for FSL Feat analyses. """
 
     # For a quick first-pass, collect source values, if necessary,
@@ -345,7 +362,7 @@ def do_feat(data, args, verbose=False):
             except ValueError:
                 val_sources.append("nan")
 
-    if verbose:
+    if args.verbose:
         print(f"Found {len(val_sources)} source values.")
 
     # Now that we've collected the value sources, in order, proceed.
@@ -375,9 +392,9 @@ def do_feat(data, args, verbose=False):
         # Figure out how to split up trial_types and stimuli
         if row['trial_type'] in args.split_on_stimulus:
             if row['trial_type'] in args.as_block:
-                print("WARNING: treating '{row['trial_type']}' as a block "
+                print(f"WARNING: treating '{row['trial_type']}' as a block "
                       "precludes splitting on stimulus. Entire blocks of "
-                      "{row['trial_type']} events will be grouped without "
+                      f"{row['trial_type']} events will be grouped without "
                       "regard to stimulus.")
                 # ignore stimulus, just worry about trial_type
                 event_name = f"trial-{row['trial_type']}"
@@ -445,10 +462,10 @@ def main(args):
     # Figure out whether we need to build standard feat event files or
     # ppi style files.
     if args.ppi_trial_types:
-        timing_tables = do_ppi(data, args, verbose=args.verbose)
+        timing_tables = do_ppi(data, args)
         did_ppi = True
     else:
-        timing_tables = do_feat(data, args, verbose=args.verbose)
+        timing_tables = do_feat(data, args)
         did_ppi = False
 
     # Save the separate event types to separate files
@@ -472,7 +489,10 @@ def main(args):
         if did_ppi:
             weight = "as-ppi"
         elif orig_trial_type in args.use_response_to:
-            weight = "as-responses"
+            idx = args.use_response_to.index(orig_trial_type)
+            response_from = args.use_response_from[idx]
+            from_str = "".join([c for c in response_from.lower() if c.isalpha()])
+            weight = f"as-{from_str}responses"
         else:
             weight = "as-ones"
 
@@ -493,10 +513,27 @@ def main(args):
                 descriptor,
             ]) + ".txt"
 
-        relevant_data.to_csv(
+        # We may need to avoid writing data without responses to some files.
+        writable_data = relevant_data[relevant_data['value'] != 'nan']
+        writable_data.to_csv(
             Path(args.output_path) / filename,
             sep='\t', index=None, header=None, float_format="%.3f",
         )
+        if args.verbose:
+            print(filename)
+            print(writable_data)
+
+        # And write them to their own non-response files.
+        errant_data = relevant_data[relevant_data['value'] == 'nan']
+        if len(errant_data) > 0:
+            errant_data.to_csv(
+                Path(args.output_path) / filename.replace("responses_events", "responsefailure_events"),
+                sep='\t', index=None, header=None, float_format="%.3f",
+            )
+            if args.verbose:
+                print(filename.replace("responses_events", "responsefailure_events"))
+                print(errant_data)
+
 
 
 if __name__ == "__main__":
