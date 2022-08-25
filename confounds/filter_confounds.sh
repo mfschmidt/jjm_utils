@@ -77,6 +77,7 @@ declare -a T_COMP_CORS_ARRAY
 declare -a A_COMP_CORS_ARRAY
 BASIC_ARRAY=("framewise_displacement")
 MOTION_6_ARRAY=("trans_x" "trans_y" "trans_z" "rot_x" "rot_y" "rot_z")
+MOTION_7_ARRAY=("csf" "trans_x" "trans_y" "trans_z" "rot_x" "rot_y" "rot_z")
 CURIOUS_ARRAY=("global_signal" "csf" "white_matter")
 for COL in $HEAD; do
   if [[ "$COL" == "t_comp_cor_"* ]]; then
@@ -103,6 +104,12 @@ for COL in $HEAD; do
   fi
   if [[ " ${MOTION_6_ARRAY[@]} " =~ " ${COL} " ]]; then
     if [[ "$SUBSET" == "basic" || "$SUBSET" == "curious" || "$SUBSET" == "motion6" ]]; then
+      COLS+=("$COL")
+      COL_IDS+=("$I")
+    fi
+  fi
+  if [[ " ${MOTION_7_ARRAY[@]} " =~ " ${COL} " ]]; then
+    if [[ "$SUBSET" == "motion7" ]]; then
       COLS+=("$COL")
       COL_IDS+=("$I")
     fi
