@@ -891,6 +891,7 @@ def context_is_valid(args):
     sif_available = args.sif_file is not None
 
     # Subject is available in rawdata
+    sub_available = True  # by default, expect the best
     if args.rawdata is None:
         print(
             "ERR: 'rawdata' must be provided "
@@ -902,18 +903,22 @@ def context_is_valid(args):
     elif args.subject is None:
         print("ERR: 'subject' must be provided on the command line.")
         sub_available = False
+    
+    if args.input_t1 != "":
+        expected_T1 = Path(args.input_t1).resolve()
+    elif args.rawdata is not None and args.subject is not None:
+        expected_T1 = Path(args.rawdata) / f"sub-{args.subject}"
+    if expected_T1 is None:
+        print("ERR: No way to locate a T1w image.")
+        print("     No rawdata, no subject, no input-t1")
+        sub_available = False
+    elif expected_T1.exists():
+        if args.verbose:
+            print(f"Found specified T1w image at {expected_T1}")
+        sub_available=True
     else:
-        if args.input_t1 != "":
-            expected_T1 = Path(args.input_t1).resolve()
-        else:
-            expected_T1 = Path(args.rawdata) / f"sub-{args.subject}"
-        if expected_T1.exists():
-            if args.verbose:
-                print(f"Found specified T1w image at {expected_T1}")
-            sub_available=True
-        else:
-            print(f"ERR: Cannot find a file at '{expected_T1}'")
-            sub_available=False
+        print(f"ERR: Cannot find a file at '{expected_T1}'")
+        sub_available=False
 
     # Work directory is writable
     if args.work_directory is None:
