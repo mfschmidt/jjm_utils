@@ -695,14 +695,18 @@ def frames_to_dataframe(task, frames, verbose=False):
                         'response': frame.get('neutStim.RESP', 'n/a'),
                         'response_time': ms_to_sec(frame['neutStim.RT']),
                     })
-                    rows.append({
-                        'trial_type': "same_diff",
-                        'onset': ms_to_sec(frame['sameDiff.OnsetTime']),
-                        'duration': ms_to_sec(frame['sameDiff.OnsetToOnsetTime']),
-                        'stimulus': "n/a",
-                        'response': frame['sameDiff.RESP'],
-                        'response_time': ms_to_sec(frame['sameDiff.RT']),
-                    })
+                    # I encountered only one file that did not have a matching
+                    # 'sameDiff' set, but it caused a failure. The next clause
+                    # should run in every other case.
+                    if 'sameDiff.OnsetTime' in frame:
+                        rows.append({
+                            'trial_type': "same_diff",
+                            'onset': ms_to_sec(frame['sameDiff.OnsetTime']),
+                            'duration': ms_to_sec(frame['sameDiff.OnsetToOnsetTime']),
+                            'stimulus': "n/a",
+                            'response': frame['sameDiff.RESP'],
+                            'response_time': ms_to_sec(frame['sameDiff.RT']),
+                        })
                 elif frame['Running'].startswith("EmoStims"):
                     # The example I used has 45 of these, all EmoStimsX
                     rows.append({
@@ -939,21 +943,24 @@ def prettify_floats_to_strings(df):
 def add_end_of_run_wait_events(df):
     """ Add 'wait' event when participant completed a run """
 
+    end_time = 289.0 * 0.900  # volumes * TR
+    fixation_duration = 2.0  # These are variable, but we lack any data
+
     if "waitfornextrun" not in df['trial_type'].unique():
         last_event = df.loc[df['onset'].idxmax()]
         end_of_run = last_event['onset'] + last_event['duration']
         final_event = pd.DataFrame([
             {
                 "onset": end_of_run + 1.0,
-                "duration": 2.0,  # These are variable, but we lack any data
+                "duration": fixation_duration,
                 "trial_type": "fixation",
                 "response_time": "n/a",
                 "stimulus": "+",
                 "response": "n/a",
             },
             {
-                'onset': end_of_run + 1.0 + 2.0,
-                'duration': (289 * 0.9) - end_of_run - 2.0 - 1.0,
+                'onset': end_of_run + 1.0 + fixation_duration,
+                'duration': end_time - end_of_run - fixation_duration - 1.0,
                 'trial_type': "waitfornextrun",
                 'response_time': "n/a",
                 'stimulus': "The next run of the task will begin in a moment.",
@@ -964,7 +971,7 @@ def add_end_of_run_wait_events(df):
     return df
 
 
-def split_into_runs(events_data, verbose=False):
+def split_into_runs(events_data, task, verbose=False):
     """ One ePrime file covers multiple fMRI runs; split them out. """
 
     bids_columns = [
@@ -982,7 +989,8 @@ def split_into_runs(events_data, verbose=False):
             ][
                 bids_columns
             ].sort_values(by='onset', key=lambda x: x.astype(float))
-            one_run_df = add_end_of_run_wait_events(one_run_df)
+            if task == "mem":
+                one_run_df = add_end_of_run_wait_events(one_run_df)
             if verbose:
                 run_start = one_run_df['onset'].astype(float).min()
                 run_end = one_run_df['onset'].astype(float).max()
@@ -1022,9 +1030,9 @@ def extract_txt_timing(filename, shift=0.0, verbose=False):
     """
 
     task = "none"
-    if "automem_task" in str(filename):
+    if "automem" in str(filename):
         task = "mem"
-    elif "picture_task" in str(filename):
+    elif "picture" in str(filename):
         task = "image"
 
     frames = parse_file(filename, verbose=verbose)
@@ -1032,7 +1040,7 @@ def extract_txt_timing(filename, shift=0.0, verbose=False):
     event_df = finalize_dataframe(event_df, md, verbose=verbose)
     event_df['onset'] = event_df['onset'] - shift
 
-    return split_into_runs(event_df, verbose=verbose)
+    return split_into_runs(event_df, task, verbose=verbose)
 
 
 def extract_xl_timing(xl_file, shift=0.0, verbose=False):
@@ -1060,9 +1068,11 @@ def extract_xl_timing(xl_file, shift=0.0, verbose=False):
     if "picture" in xl_file.name:
         row_as_event = row_as_pic_event
         row_as_nonevent = row_as_pic_arrow_event
+        task = "image"
     elif "memory" in xl_file.name:
         row_as_event = row_as_mem_event
         row_as_nonevent = row_as_mem_primary_event
+        task = "mem"
     else:
         raise ValueError(f"{xl_file.name} is neither picture nor memory.")
 
@@ -1090,7 +1100,7 @@ def extract_xl_timing(xl_file, shift=0.0, verbose=False):
     event_df['shift'] = event_df['shift'] - shift
     event_df['onset'] = event_df['onset'] - event_df['shift']
 
-    return split_into_runs(event_df, verbose=verbose)
+    return split_into_runs(event_df, task, verbose=verbose)
 
 
 def main(args):
