@@ -82,11 +82,18 @@ def get_arguments():
              "the use of a dummy numeral 1 for the block."
     )
     parser.add_argument(
-        "--split-on-stimulus", action='append', default=[],
+        "--trial-types", nargs='*', default=[],
         help="By default, a different file will be generated for each "
              "trial_type in the events.tsv file. Optionally, by setting "
-             "'--split-on-stimulus trial_type', events matching trial_type "
-             "will also be split across stimuli."
+             "'--trial-types a b c', only events matching trial_type "
+             "of 'a', 'b', or 'c' will be extracted."
+    )
+    parser.add_argument(
+        "--split-on-stimulus", nargs='*', default=[],
+        help="By default, a different file will be generated for each "
+             "trial_type in the events.tsv file. Optionally, by setting "
+             "'--split-on-stimulus trial_type', events will also be "
+             "split between that trial_type's stimuli."
     )
     parser.add_argument(
         "--use-response", action='append', default=[],
@@ -160,12 +167,12 @@ def get_arguments():
     return parsed_args
 
 
-def trial_type_plus_stimulus(trial_type, stimulus):
+def trial_type_plus_stimuli(trial_type, stimuli):
     """ Create a unique safe identifier combining trial_type and stimulus.
 
         :param str trial_type:
             The trial_type label
-        :param str stimulus:
+        :param dict stimuli:
             The stimulus label, will have all non-alpha characters stripped
         :returns:
             A concatenation of trial_type and stimulus, separated by an
@@ -174,10 +181,11 @@ def trial_type_plus_stimulus(trial_type, stimulus):
 
     return "_".join([
         f"trial-{trial_type}",
+    ] + [
         "-".join([
             "stimulus",
-            "".join([c for c in stimulus.lower() if c.isalpha()]),
-        ]),
+            "".join([c for c in v.lower() if c.isalpha()]),
+        ]) for k, v in stimuli.items() if v is not None
     ])
 
 
@@ -340,18 +348,28 @@ def do_feat(data, args):
 
     # For a quick first-pass, collect source values, if necessary,
     # from anything specified as --use-response-from
+    # Liberally match stimuli, forgiving capitalization or punctuation.
+    supplied_stimuli = [
+        "".join([c for c in stim.lower() if c.isalpha()])
+        for stim in args.use_response_from
+    ]
     val_sources = []
+
+    # also from anything specified as --split-on-stimulus
+    # since that needs to split forward and back across a block
+    splitting_stimuli = []
+    # Maintain current state of all split stimuli,
+    # and fill keys, so we can tell when it's full.
+    cur_state = {}
+    for s in args.split_on_stimulus:
+        cur_state[s] = None
+
     for idx, row in data.iterrows():
         # If we were asked to use a particular response, same or other,
         # store that response until it's used. This must happen in a first
         # pass, before the actual pass, because the source value may come
         # after the row where it is to be used.
 
-        # Liberally match stimuli, forgiving capitalization or punctuation.
-        supplied_stimuli = [
-            "".join([c for c in stim.lower() if c.isalpha()])
-            for stim in args.use_response_from
-        ]
         this_stimulus = "".join([c for c in row['stimulus'].lower() if c.isalpha()])
         if (
                 (row['trial_type'] in args.use_response_from) or
@@ -362,7 +380,23 @@ def do_feat(data, args):
             except ValueError:
                 val_sources.append("nan")
 
-    if args.verbose:
+        if row['trial_type'] in args.split_on_stimulus:
+            if row['trial_type'] in cur_state.keys():
+                if cur_state[row['trial_type']] is not None:
+                    # We have a full state, so store a copy for each
+                    # requested trial_type and start over
+                    for _ in args.trial_types:
+                        splitting_stimuli.append(cur_state.copy())
+                    # Reset cur_state
+                    for k in cur_state.keys():
+                        cur_state[k] = None
+            cur_state[row['trial_type']] = row['stimulus']
+    for _ in args.trial_types:
+        # save whatever the final state is,
+        # a copy for each trial_type
+        splitting_stimuli.append(cur_state.copy())
+
+    if len(args.use_response_from) > 0 and args.verbose:
         print(f"Found {len(val_sources)} source values.")
 
     # Now that we've collected the value sources, in order, proceed.
@@ -382,6 +416,21 @@ def do_feat(data, args):
                       f"in '{str(args.events_file)}' to a 1 value for Feat.")
         else:
             third_value = "1"
+
+        if (
+                (args.use_response_to == [] and args.trial_types == []) or
+                (row['trial_type'] in args.use_response_to) or
+                (row['trial_type'] in args.trial_types)
+        ):
+            try:
+                splitting_stimulus = splitting_stimuli.pop(0)
+            except IndexError:
+                splitting_stimulus = {}
+                if len(args.split_on_stimulus) > 0:
+                    print(f"  WARNING: asked to split on {args.split_on_stimulus}"
+                          f" but ran out of stimuli.")
+        else:
+            splitting_stimulus = {}
             
         event = {
             "onset": float(row['onset']) - args.shift,
@@ -390,42 +439,42 @@ def do_feat(data, args):
         }
 
         # Figure out how to split up trial_types and stimuli
-        if row['trial_type'] in args.split_on_stimulus:
+        event_name = f"trial-{row['trial_type']}"
+        if len(args.split_on_stimulus) > 0:
             if row['trial_type'] in args.as_block:
                 print(f"WARNING: treating '{row['trial_type']}' as a block "
                       "precludes splitting on stimulus. Entire blocks of "
                       f"{row['trial_type']} events will be grouped without "
                       "regard to stimulus.")
-                # ignore stimulus, just worry about trial_type
-                event_name = f"trial-{row['trial_type']}"
             else:
-                event_name = trial_type_plus_stimulus(row['trial_type'],
-                                                      row['stimulus'])
-        else:
-            event_name = f"trial-{row['trial_type']}"
+                event_name = trial_type_plus_stimuli(row['trial_type'],
+                                                     splitting_stimulus)
 
         # Depending on context, store this event or append it to one.
-        if event_name in timing_tables:
-            if row['trial_type'] in args.as_block:
-                if last_trial_type == event_name:
-                    # This event is part of an existing contiguous block,
-                    # so we should add its duration to the prior event,
-                    # and not store it by itself.
-                    same_event = timing_tables[event_name][-1]
-                    same_event['duration'] = (
-                        event['onset'] + event['duration'] - same_event['onset']
-                    )
+        if args.trial_types == [] or row['trial_type'] in args.trial_types:
+            if event_name in timing_tables:
+                if row['trial_type'] in args.as_block:
+                    if last_trial_type == event_name:
+                        # This event is part of an existing contiguous block,
+                        # so we should add its duration to the prior event,
+                        # and not store it by itself.
+                        same_event = timing_tables[event_name][-1]
+                        same_event['duration'] = (
+                            event['onset'] + event['duration'] - same_event['onset']
+                        )
+                    else:
+                        # This event_name exists, and is specified as a block,
+                        # but is not contiguous with this event, so this event is new.
+                        timing_tables[event_name].append(event)
                 else:
-                    # This event_name exists, and is specified as a block,
-                    # but is not contiguous with this event, so this event is new.
+                    # This event_name exists, but is not specified as a block,
+                    # so it is a new event.
                     timing_tables[event_name].append(event)
             else:
-                # This event_name exists, but is not specified as a block,
-                # so it is a new event.
-                timing_tables[event_name].append(event)
+                # event_name not yet in timing_Tables, create a new list of events
+                timing_tables[event_name] = [event, ]
         else:
-            # event_name not yet in timing_Tables, create a new list of events
-            timing_tables[event_name] = [event, ]
+            pass  # ignore events not specified
 
         # Remember last_trial_type to detect continuing blocks of same trials
         # same as event_name, only matters with multi-event blocks
@@ -492,7 +541,7 @@ def main(args):
             idx = args.use_response_to.index(orig_trial_type)
             response_from = args.use_response_from[idx]
             from_str = "".join([c for c in response_from.lower() if c.isalpha()])
-            weight = f"as-{from_str}responses"
+            weight = f"as-{from_str}_response"
         else:
             weight = "as-ones"
 
@@ -524,16 +573,18 @@ def main(args):
             print(writable_data)
 
         # And write them to their own non-response files.
-        errant_data = relevant_data[relevant_data['value'] == 'nan']
-        if len(errant_data) > 0:
-            errant_data.to_csv(
-                Path(args.output_path) / filename.replace("responses_events", "responsefailure_events"),
+        errant_idx = relevant_data[relevant_data['value'] == 'nan'].index
+        if len(errant_idx) > 0:
+            # ONLY change these 'nan' values to 1 AFTER originals are saved.
+            # This is ONLY for the 'failure' file.
+            relevant_data.loc[errant_idx, 'value'] = 1
+            relevant_data.loc[errant_idx].to_csv(
+                Path(args.output_path) / filename.replace("_response_events", "_failure_events"),
                 sep='\t', index=None, header=None, float_format="%.3f",
             )
             if args.verbose:
-                print(filename.replace("responses_events", "responsefailure_events"))
-                print(errant_data)
-
+                print(filename.replace("_response_events", "_failure_events"))
+                print(relevant_data.loc[errant_idx])
 
 
 if __name__ == "__main__":
