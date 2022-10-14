@@ -18,14 +18,13 @@ SRC_FILES=\
  pipelines/{cleanup_tmp.sh,inventory_rawdata,validate} \
  mri/{make_masks,mridims,fsinv,diff_json,check_session} \
  mri/*.py mri/*.sh \
- confounds/filter_confounds.{py,sh}"
+ confounds/filter_confounds.{py,sh} \
+ ansible/add_node_user.sh"
 TGT_FILES=\
 "${DEST}/sub_{pipeline,fmriprep,qsiprep,mriqc,feat,freesurfer} \
  ${DEST}/{cleanup_tmp.sh,inventory_rawdata,validate} \
  ${DEST}/{make_masks,mridims,fsinv,diff_json,check_session} \
- ${DEST}/*.py ${DEST}/*.sh \
- ${DEST}/filter_confounds.sh"
-
+ ${DEST}/*.py ${DEST}/*.sh"
 ssh ${1} "
 cd ~/jjm_utils
 git pull
