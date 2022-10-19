@@ -33,6 +33,10 @@ def get_arguments():
         help="only run on the specified mask file",
     )
     parser.add_argument(
+        "--mask-path",
+        help="where to store the newly created masks",
+    )
+    parser.add_argument(
         "-t", "--threshold", type=float, default=0.9,
         help="thresholds for inclusion in probabilistic masks",
     )
@@ -52,9 +56,13 @@ def get_arguments():
         print(f"Path '{args.featpath}' does not exist.")
         sys.exit(1)
 
+    if hasattr(args, "mask_path"):
+        setattr(args, "mask_path",
+                Path(args.mask_path).resolve())
+    else:
+        setattr(args, "mask_path",
+                (args.featpath / ".." / "masks").resolve())
     setattr(args, "subject_id", args.featpath.parent.name.replace("sub-", ""))
-    setattr(args, "mask_path",
-            (args.featpath / ".." / "masks").resolve())
     setattr(args, "cope_path",
             (args.featpath / "stats").resolve())
     if args.verbose:
@@ -139,7 +147,7 @@ def extract_voxels_by_label(data, mask, label):
 
 
 def extract_voxels_by_threshold(data, mask, threshold):
-    """ Extract voxels from input where the value in mask >= threshold.
+    """ Extract voxels from input where the value in mask > threshold.
     """
 
     if data.shape != mask.shape:
@@ -150,7 +158,7 @@ def extract_voxels_by_threshold(data, mask, threshold):
     for x in range(dims[0]):
         for y in range(dims[1]):
             for z in range(dims[2]):
-                if mask[x][y][z] >= threshold:
+                if mask[x][y][z] > threshold:
                     voxels.append({
                         "x": x, "y": y, "z": z,
                         "value": data[x][y][z],
