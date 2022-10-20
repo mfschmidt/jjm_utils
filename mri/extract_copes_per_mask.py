@@ -256,15 +256,13 @@ def main(args):
             mask_data = mask_img.get_fdata()
             if args.verbose:
                 print(f"Applying {mask.name} to {cope.name} (named {cope_name})...")
-                print("  cope is {} x {} x {}".format(
+                print("  cope is {} x {} x {} and mask is {} x {} x {}".format(
                     cope_data.shape[0], cope_data.shape[1], cope_data.shape[2],
-                ))
-                print("  mean cope is {:0.2f}, from {:0.2f} to {:0.2f}".format(
-                    np.mean(cope_data), np.min(cope_data), np.max(cope_data),
-                ))
-                print("  mask is {} x {} x {}".format(
                     mask_data.shape[0], mask_data.shape[1], mask_data.shape[2],
                 ))
+                # print("  mean cope is {:0.2f}, from {:0.2f} to {:0.2f}".format(
+                #     np.mean(cope_data), np.min(cope_data), np.max(cope_data),
+                # ))
 
             lbls, ns = np.unique(mask_data, return_counts=True)
             if len(lbls) == 1:
@@ -294,7 +292,11 @@ def main(args):
                 )
                 if len(voxels) > 0:
                     if args.verbose:
-                        print(f"  found {len(voxels)} voxels")
+                        if 'value' in voxels:
+                            print(f"  found {len(voxels)} voxels "
+                                  f"from {np.min(voxels['value']):0.2f} "
+                                  f"to {np.max(voxels['value']):0.2f}, "
+                                  f"mean {np.mean(voxels['value']):0.2f}")
                 else:
                     if args.verbose:
                         print(f"  No voxels meet {args.threshold} threshold!!")
@@ -320,12 +322,6 @@ def main(args):
                         voxels['cope'] = cope_name
                         voxels['mask'] = mask.name[: -7]
                         voxelwise_dataframes.append(voxels)
-            if args.verbose and ('value' in voxels):
-                print("  masked cope is {:0.2f}, from {:0.2f} to {:0.2f}".format(
-                    np.mean(voxels['value']),
-                    np.min(voxels['value']),
-                    np.max(voxels['value']),
-                ))
 
         # Save out complete set of all masked voxels
         voxelwise_dataframe = pd.concat(voxelwise_dataframes)
@@ -374,9 +370,15 @@ def main(args):
     if summary_file.exists():
         existing_data = pd.read_csv(summary_file)
         stats_dataframe = pd.concat([existing_data, stats_dataframe])
-    stats_dataframe[
+    # Re-sort everything after combining existing and new data, then save.
+    stats_dataframe['cope_num'] = stats_dataframe['cope'].apply(
+        lambda x: int(x[4:])
+    )
+    stats_dataframe.sort_values(
+        ['cope_num', 'mask', ]
+    )[
         ['subject', 'cope', 'mask', 'n', 'mean', 'sd', ]
-    ].sort_index().to_csv(
+    ].reset_index().to_csv(
         summary_file, index=None
     )
 
