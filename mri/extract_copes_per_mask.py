@@ -249,6 +249,7 @@ def main(args):
         if is_high_level:
             # High level gfeat runs call every file cope1.feat, be more specific.
             cope_name = cope.parent.parent.name.replace(".feat", "")
+            print(f"getting name {cope.parent.parent.name} from {str(cope.resolve())}")
         cope_data = cope_img.get_fdata()
         for mask in masks:
             mask_img = nib.load(str(mask.resolve()))
@@ -319,11 +320,15 @@ def main(args):
                         voxels['cope'] = cope_name
                         voxels['mask'] = mask.name[: -7]
                         voxelwise_dataframes.append(voxels)
+            if args.verbose and ('value' in voxels):
+                print("  masked cope is {:0.2f}, from {:0.2f} to {:0.2f}".format(
+                    np.mean(voxels['value']),
+                    np.min(voxels['value']),
+                    np.max(voxels['value']),
+                ))
 
         # Save out complete set of all masked voxels
-        print(f"{len(voxelwise_dataframes)} dataframes.")
         voxelwise_dataframe = pd.concat(voxelwise_dataframes)
-        print(f"concat into {voxelwise_dataframe.shape}-shaped dataframe with columns {voxelwise_dataframe.columns}")
         all_data.append(voxelwise_dataframe)
         voxelwise_dataframe['subject'] = args.subject_id
         voxelwise_dataframe[
@@ -364,12 +369,15 @@ def main(args):
         lambda row: 0 if np.isnan(row['mean']) else row['n'], axis=1,
     )
 
-    # Save to disk
+    # Save to disk; append rather than overwriting
+    summary_file = out_path / f"sub-{args.subject_id}_copes_by_masks.csv"
+    if summary_file.exists():
+        existing_data = pd.read_csv(summary_file)
+        stats_dataframe = pd.concat([existing_data, stats_dataframe])
     stats_dataframe[
         ['subject', 'cope', 'mask', 'n', 'mean', 'sd', ]
     ].sort_index().to_csv(
-        out_path / f"sub-{args.subject_id}_copes_by_masks.csv",
-        index=None
+        summary_file, index=None
     )
 
     print(stats_dataframe)
