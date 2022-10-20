@@ -3,6 +3,7 @@
 # extract_copes_per_mask.py
 
 import sys
+import re
 from pathlib import Path
 import argparse
 import nibabel as nib
@@ -62,9 +63,23 @@ def get_arguments():
     else:
         setattr(args, "mask_path",
                 (args.featpath / ".." / "masks").resolve())
-    setattr(args, "subject_id", args.featpath.parent.name.replace("sub-", ""))
+    
     setattr(args, "cope_path",
             (args.featpath / "stats").resolve())
+
+    # Figure out the subject ID from the path
+    pattern = re.compile(r"sub-([A-Z][0-9]+)")
+    match = pattern.search(str(args.featpath))
+    if match:
+        setattr(args, "subject_id", match.group(1))
+    else:
+        if ".feat" in str(args.featpath):
+            setattr(args, "subject_id",
+                    args.featpath.parent.name.replace("sub-", ""))
+        else:
+            setattr(args, "subject_id",
+                    args.featpath.parent.parent.parent.parent.name.replace("sub-", ""))
+
     if args.verbose:
         print(f"Subject is '{args.subject_id}'.")
         print(f"Masks are at '{args.mask_path}'.")
@@ -183,6 +198,16 @@ def main(args):
             str(args.featpath.resolve()),
         ))
 
+    # What feat run are we dealing with? Different levels, different patterns.
+    is_high_level = False
+    feat_id = args.featpath.resolve().parent.name.split('.')[0]
+    if ".gfeat" in str(args.featpath.resolve()):
+        is_high_level = True
+        pattern = re.compile(r"/([^/]+).gfeat")
+        match = pattern.search(str(args.featpath.resolve()))
+        if match:
+            feat_id = match.group(1)
+
     if args.mask is None:
         masks = sorted(args.mask_path.glob("res-bold_*.nii.gz"))
         print(f"Found {len(masks)} masks in {str(args.mask_path)}:")
@@ -207,21 +232,29 @@ def main(args):
     # Ensure the path for writing exists.
     out_path = (
         args.mask_path /
-        f"{args.featpath.name.replace('.feat', '')}_t-{args.threshold:0.2f}"
+        f"{feat_id}_t-{args.threshold:0.2f}"
     )
     out_path.mkdir(exist_ok=True)
 
     # For all specified copes and all specified masks, combine them and average
+    if len(copes) == 0:
+        print(f"No copes found at {args.cope_path}")
+        return 0
+
     all_data = []
     for cope in copes:
         voxelwise_dataframes = []
         cope_img = nib.load(str(cope.resolve()))
+        cope_name = cope.name
+        if is_high_level:
+            # High level gfeat runs call every file cope1.feat, be more specific.
+            cope_name = cope.parent.parent.name.replace(".feat", "")
         cope_data = cope_img.get_fdata()
         for mask in masks:
             mask_img = nib.load(str(mask.resolve()))
             mask_data = mask_img.get_fdata()
             if args.verbose:
-                print(f"Applying {mask.name} to {cope.name}...")
+                print(f"Applying {mask.name} to {cope.name} (named {cope_name})...")
                 print("  cope is {} x {} x {}".format(
                     cope_data.shape[0], cope_data.shape[1], cope_data.shape[2],
                 ))
@@ -246,7 +279,7 @@ def main(args):
                         voxels = extract_voxels_by_label(
                             cope_data, mask_data, lbl
                         )
-                        voxels['cope'] = cope.name[: -7]
+                        voxels['cope'] = cope_name
                         voxels['mask'] = mask.name[: -7]
                         voxelwise_dataframes.append(voxels)
             elif len(lbls) >= 20:
@@ -270,7 +303,7 @@ def main(args):
                         'label': lbls[0], 'value': np.NaN,
                         'x': np.NaN, 'y': np.NaN, 'z': np.NaN,
                     }, ])
-                voxels['cope'] = cope.name[: -7]
+                voxels['cope'] = cope_name
                 voxels['mask'] = mask.name[: -7]
                 voxelwise_dataframes.append(voxels)
             else:
@@ -283,18 +316,20 @@ def main(args):
                         voxels = extract_voxels_by_label(
                             cope_data, mask_data, lbl
                         )
-                        voxels['cope'] = cope.name[: -7]
+                        voxels['cope'] = cope_name
                         voxels['mask'] = mask.name[: -7]
                         voxelwise_dataframes.append(voxels)
 
         # Save out complete set of all masked voxels
+        print(f"{len(voxelwise_dataframes)} dataframes.")
         voxelwise_dataframe = pd.concat(voxelwise_dataframes)
+        print(f"concat into {voxelwise_dataframe.shape}-shaped dataframe with columns {voxelwise_dataframe.columns}")
         all_data.append(voxelwise_dataframe)
         voxelwise_dataframe['subject'] = args.subject_id
         voxelwise_dataframe[
             ['subject', 'cope', 'mask', 'value', 'label', 'x', 'y', 'z', ]
         ].sort_values(['cope', 'mask', ]).to_csv(
-            out_path / f"sub-{args.subject_id}_cope-{cope.name[: -7]}_voxels_by_masks.csv",
+            out_path / f"sub-{args.subject_id}_cope-{cope_name}_voxels_by_masks.csv",
             index=None
         )
 
