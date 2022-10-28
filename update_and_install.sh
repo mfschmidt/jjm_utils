@@ -16,18 +16,20 @@ fi
 SRC_FILES=\
 "pipelines/sub_{pipeline,fmriprep,qsiprep,mriqc,feat,freesurfer} \
  pipelines/{cleanup_tmp.sh,inventory_rawdata,validate} \
- mri/{make_masks,mridims,fsinv,diff_json,check_session} \
+ mri/{mridims,fsinv,diff_json,check_session} \
  mri/*.py mri/*.sh \
  confounds/filter_confounds.{py,sh} \
  ansible/add_node_user.sh"
 TGT_FILES=\
 "${DEST}/sub_{pipeline,fmriprep,qsiprep,mriqc,feat,freesurfer} \
  ${DEST}/{cleanup_tmp.sh,inventory_rawdata,validate} \
- ${DEST}/{make_masks,mridims,fsinv,diff_json,check_session} \
+ ${DEST}/{mridims,fsinv,diff_json,check_session} \
  ${DEST}/*.py ${DEST}/*.sh"
 ssh ${1} "
 cd ~/jjm_utils
 git pull
+if [[ -f mri/make_masks ]]; then rm mri/make_masks; fi
+if [[ -f ${DEST}/make_masks ]]; then sudo rm ${DEST}/make_masks; fi
 sudo cp ${SRC_FILES} ${DEST}
 sudo chown root:mriproc ${TGT_FILES}
 sudo chmod 755 ${TGT_FILES}
