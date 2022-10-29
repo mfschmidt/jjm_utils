@@ -2,7 +2,7 @@
 
 import sys
 import os
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ElementTree
 import argparse
 import errno
 import subprocess
@@ -62,8 +62,10 @@ class Atlas():
             self.lut = False
         elif lut is True or lut == "default":
             # Default to FreeSurfer's LUT
-            self.lut = Path(os.environ["FREESURFER_HOME"]) / \
-                       "FreeSurferColorLUT.txt"
+            freesurfer_dir = Path(
+                os.environ.get("FREESURFER_HOME", "/usr/local/freesurfer/7.2.0")
+            )
+            self.lut = freesurfer_dir / "FreeSurferColorLUT.txt"
         else:
             self.lut = Path(lut)
 
@@ -115,12 +117,12 @@ class Atlas():
         if not self.lut.exists():
             print(f"The lookup table, '{str(self.lut)}', cannot be found.")
         if not self.lut.exists() or self.lut is False:
-            for lbl in self.lbls:
+            for lbl in self.labels:
                 atlas_map[lbl] = ""
             return atlas_map
 
         # Handle the expected LUT/label mapping
-        regex = re.compile(r"^([\d]+)[\s]+([\S]+)[\s]+")
+        regex = re.compile(r"^(\d+)\s+(\S+)\s+")
         with open(self.lut, "r") as f:
             for line in f:
                 match = re.search(regex, line)
@@ -145,10 +147,41 @@ class AtlasConfig():
         self.base_path = Path(base_path).resolve()
         self.atlas = self.base_path / atlas
         self.name = self.atlas.name
-        self.labels = self.base_path / labels
         self.spec = spec
         self.res = res
-    
+        if isinstance(labels, Atlas):
+            self.labels = labels
+        else:
+            self.labels = self.base_path / labels
+
+        # Make every effort to find the desired atlas.
+        # Sometimes FreeSurfer atlases don't have a T2,
+        # and therefore have a differently named atlas.
+        if not self.atlas.exists():
+            # If T2 does not exist, look for the only T1 version
+            if "-T1-T2" in self.name:
+                backup_name = self.atlas.name.replace("-T1-T2", "-T1")
+                if (self.base_path / backup_name).exists():
+                    self.name = backup_name
+                    self.atlas = self.base_path / backup_name
+        if not self.atlas.exists():
+            # If we asked for a different version, take whatever's there.
+            match = re.search(r"(.+)(\.v\d+\.)(.+)", self.name)
+            if match:
+                alternates = list(self.base_path.glob(
+                    match.group(1) + ".v*." + match.group(3)
+                ))
+                if len(alternates) > 0:
+                    self.atlas = Path(alternates[0])
+                    self.name = self.atlas.name
+        if self.atlas.exists():
+            if self.name != atlas:
+                print(f"WARNING: Atlas {atlas} does not exist. "
+                      f"Using {self.name} instead.")
+        else:
+            print(f"ERROR: Could not find atlas {self.name} or an alternate "
+                  f"at {str(self.base_path)}")
+
 
 def get_arguments():
     """ Parse the command-line arguments.
@@ -221,14 +254,14 @@ def get_arguments():
             parser.print_help()
             sys.exit(1)
         else:
-            proj_path = Path("/mnt/derivatives/{parsed_args.project}")
+            proj_path = Path(f"/mnt/derivatives/{parsed_args.project}")
             sub_path = proj_path / "freesurfer7" / f"sub-{parsed_args.subject}"
             if not sub_path.exists():
                 print(f"No freesurfer data for subject '{parsed_args.subject}'"
                       f" at '{sub_path}'.")
                 sys.exit(1)
 
-    Path(parsed_args.output).mkdir(exist_ok=True)
+    Path(parsed_args.output_dir).mkdir(exist_ok=True)
 
     return parsed_args
 
@@ -339,7 +372,7 @@ def get_fsl_labels(label_file):
     import pathlib
 
     if pathlib.Path(label_file).is_file():
-        tree = ET.parse(label_file)
+        tree = ElementTree.parse(label_file)
         root = tree.getroot()
         labels = {}
         for label in root.findall("./data/label"):
@@ -359,28 +392,27 @@ def get_fsl_labels(label_file):
         raise FileNotFoundError(
             errno.ENOENT, os.strerror(errno.ENOENT), label_file
         )
-    return None
 
 
-def make_binary_mask(atlas, id, output_file, tool="freesurfer"):
+def make_binary_mask(config, label, output_file, tool="freesurfer", verbose=False):
     """ Just execute the fsl command to extract one ROI mask.
     """
     
-    print(f"from {atlas.get('atlas').split('/')[-1].split('.')[0]}")
+    print(f"from {config.name}")
 
     if tool == "fsl":
-        # We can do this the FSL way by extracting the id, then writing it.
-        exe = Path(os.environ["FSLDIR"]) / "bin" / "fslmaths"
+        # We can do this the FSL way by extracting the label, then writing it.
+        exe = Path(os.environ.get("FSLDIR", "/usr/local/fsl")) / "bin" / "fslmaths"
         fsl_extract_command = [
             str(exe.resolve()),
-            str(Path(atlas["basepath"]) / atlas["atlas"]),
-            "-thr", str(id), "-uthr", str(id), output_file,
+            str(config.atlas),
+            "-thr", str(label), "-uthr", str(label), output_file,
         ]
         extract_proc = subprocess.run(
             fsl_extract_command,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
-        print_proc_if_needed(extract_proc)
+        print_proc_if_needed(extract_proc, verbose)
     
         ones_command = [
             str(exe.resolve()),
@@ -390,25 +422,27 @@ def make_binary_mask(atlas, id, output_file, tool="freesurfer"):
             ones_command,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
-        print_proc_if_needed(ones_proc)
+        print_proc_if_needed(ones_proc, verbose)
 
     else:  # "freesurfer"
         # We can do this the FreeSurfer way by binarizing the label.
-        exe = Path(os.environ["FREESURFER_HOME"]) / "bin" / "mri_binarize"
+        exe = Path(
+            os.environ.get("FREESURFER_HOME", "/usr/local/freesurfer/7.2.0")
+        ) / "bin" / "mri_binarize"
         fs_binarize_command = [
             str(exe.resolve()),
-            "--i", os.path.join(atlas["basepath"], atlas["atlas"]),
+            "--i", str(config.atlas),
             "--o", str(output_file),
-            "--match", str(id),
+            "--match", str(label),
         ]
         binarize_result = subprocess.run(
             fs_binarize_command,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
-        print_proc_if_needed(binarize_result)
+        print_proc_if_needed(binarize_result, verbose)
 
 
-def combine_masks(mask_a, mask_b, output_path=None):
+def combine_masks(mask_a, mask_b, output_path=None, verbose=False):
     """ Combine two binary masks AND-wise for a combination mask.
     """
 
@@ -418,19 +452,19 @@ def combine_masks(mask_a, mask_b, output_path=None):
     if output_path is None:
         output_path = mask_a
     
-    exe = Path(os.environ["FSLDIR"]) / "bin" / "fslmaths"
+    exe = Path(os.environ.get("FSLDIR", "/usr/local/fsl")) / "bin" / "fslmaths"
     
     combine_command = [exe, mask_a, "-mul", mask_b, output_path, ]
     combine_proc = subprocess.run(
         combine_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
-    print_proc_if_needed(combine_proc)
+    print_proc_if_needed(combine_proc, verbose)
 
     bin_command = [exe, output_path, "-bin", output_path, "-odt", "char", ]
     bin_proc = subprocess.run(
         bin_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
-    print_proc_if_needed(bin_proc)
+    print_proc_if_needed(bin_proc, verbose)
 
 
 def make_filters(configs, args):
@@ -438,21 +472,21 @@ def make_filters(configs, args):
     """
 
     for cfg in configs:
-        print(f"Extracting masks from {cfg.label_xml[:-4]} atlas...")
+        print(f"Extracting masks from {cfg.name} atlas...")
         if isinstance(cfg.labels, Atlas):
             labels = cfg.labels.map
         else:
             labels = get_fsl_labels(cfg.labels)
-        for id, label in labels.items():
+        for num, label in labels.items():
 
-            print(f"#{id}. {label.get('abbr')}")
+            print(f"#{num}. {label.get('abbr')}")
 
-            full_mask_path = Path(args.output) / \
+            full_mask_path = Path(args.output_dir) / \
                 f"{args.atlas.lower()}_{label.get('abbr')}_mask{cfg.spec}.nii.gz"
 
             if args.verbose:
                 print(f"  building {cfg.name} {label.get('abbr')} "
-                      f"in {args.output} for subject {args.subject}.")
+                      f"in {args.output_dir} for subject {args.subject}.")
 
             # FSL does not like FreeSurfer's mgz files, so we must either
             # convert them to .nii.gz first or use FreeSurfer's tools.
@@ -460,11 +494,11 @@ def make_filters(configs, args):
             # The raw ROI mask must be created in all cases.
             out_path = full_mask_path.resolve().parent
             out_file = f"res-{cfg.res}_{full_mask_path.name}"
-            make_binary_mask(cfg.atlas, out_path / out_file, id)
+            make_binary_mask(cfg, num, out_path / out_file, args.verbose)
             
             # Only in some cases should we overwrite it with a threshold map.
             if args.contrast_map != "":
-                combine_masks(out_path / out_file, args.contrast_map)
+                combine_masks(out_path / out_file, args.contrast_map, args.verbose)
 
 
 def get_labels(label_xml):
@@ -477,7 +511,7 @@ def get_labels(label_xml):
     """
 
     if os.path.isfile(label_xml):
-        tree = ET.parse(label_xml)
+        tree = ElementTree.parse(label_xml)
         root = tree.getroot()
         labels = {}
         for label in root.findall("./data/label"):
@@ -508,16 +542,15 @@ def get_labels(label_xml):
         raise FileNotFoundError(
             errno.ENOENT, os.strerror(errno.ENOENT), label_xml
         )
-    return None
 
 
-def print_proc_if_needed(proc):
+def print_proc_if_needed(proc, verbose=False):
     """ If a subprocess output anything, print it. """
 
-    if len(proc.stdout) > 0:
-        print("    stdout: '" + proc.stdout.decode("utf-8")  + "'")
+    if verbose and len(proc.stdout) > 0:
+        print("    stdout: '" + proc.stdout.decode("utf-8") + "'")
     if len(proc.stderr) > 0:
-        print("    stderr: '" + proc.stderr.decode("utf-8")  + "'")
+        print("    stderr: '" + proc.stderr.decode("utf-8") + "'")
 
 
 def atlas_file(atlas, subtype, threshold, resolution):
@@ -532,7 +565,8 @@ def atlas_file(atlas, subtype, threshold, resolution):
 def main(args):
     """ entry point """
 
-    fsl_basepath = os.path.join(os.environ['FSLDIR'], "data", "atlases", )
+    fsl_dir = Path(os.environ.get("FSLDIR", "/usr/local/fsl"))
+    fsl_basepath = fsl_dir / "data" / "atlases"
     if args.atlas.lower() == "HarvardOxford".lower():
         if args.space.lower() == "MNI152NLin6Sym".lower():
             cortical_config = AtlasConfig(
@@ -551,6 +585,7 @@ def main(args):
                 spec="",
                 res=f"{args.resolution}mm",
             )
+            make_filters([cortical_config, subcortical_config, ], args)
         elif args.space.lower() == "MNI152NLin2009cAsym".lower():
             cortical_config = AtlasConfig(
                 base_path=fsl_basepath,
@@ -568,7 +603,7 @@ def main(args):
                 spec="",
                 res=f"{args.resolution}mm",
             )
-        make_filters([cortical_config, subcortical_config, ], args)
+            make_filters([cortical_config, subcortical_config, ], args)
     elif args.atlas.lower() == "Yeo17".lower():
         cortical_config = AtlasConfig(
             base_path=Path(".") / "atlases",
@@ -577,7 +612,7 @@ def main(args):
             spec=".MNI",
             res="yeo",
         )
-        make_filters([cortical_config, subcortical_config, ], args)
+        make_filters([cortical_config, ], args)
     elif args.atlas.lower() == "Yeo07".lower():
         cortical_config = AtlasConfig(
             base_path=Path(".") / "atlases",
@@ -586,7 +621,7 @@ def main(args):
             spec=".MNI",
             res="yeo",
         )
-        make_filters([cortical_config, subcortical_config, ], args)
+        make_filters([cortical_config, ], args)
     elif args.atlas.lower() in ["HBT".lower(), "CA".lower(), "FS60".lower(), ]:
         left_config = AtlasConfig(
             base_path=f"/mnt/derivatives/{args.project}/freesurfer7/"
