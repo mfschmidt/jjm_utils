@@ -39,6 +39,7 @@ For more, use the help.
 # TODO: If no arguments, usage
 # TODO: Allow matching of mask to other resolution for later use.
 
+
 class Atlas():
     """ There isn't really such a thing as an atlas for hippocampal subfields.
         Each subject has their own atlas without much of a legend.
@@ -187,10 +188,26 @@ def get_arguments():
     """ Parse the command-line arguments.
     """
 
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Generate individual binary masks from an atlas.",
+        epilog="A few examples:\n\n"
+               "make_masks.py HarvardOxford --resolution "
+    )
     parser.add_argument(
         "atlas",
-        help="The atlas to use (only some are supported)",
+        help="""The atlas to use (only some are supported)
+                'HarvardOxford'
+                    requires some extra files be installed into fsl
+                    see /usr/local/bin/fsl/atlases/HarvardOxford
+                    for resolution and space availability
+                'Yeo07', 'Yeo17'
+                    must be available in ./atlases/
+                'FS7', 'HBT', 'Amy', 'CA', 'FS60', 'Thal'
+                    these require that FreeSurfer7 and additional
+                    subfield segmentations have been run and the
+                    atlases are available in
+                    /mnt/derivatives/[project]/freesurfer7/[subject]/mri/
+             """,
     )
     parser.add_argument(
         "-s", "--subject", type=str, default="",
@@ -221,7 +238,8 @@ def get_arguments():
         help="""Which label style to use for individual mask file names:
                 'original' keeps the name from the atlas label xml
                 'long' keeps the original name, but formats it without spaces
-                'short' abbreviates the original name""",
+                'short' strips special characters from the original name
+                'abbr' abbreviates the original name""",
     )
     parser.add_argument(
         "--atlas-threshold", default="0",
@@ -369,29 +387,37 @@ def abbreviate_label(label):
 def get_fsl_labels(label_file):
     """ Return label dictionary from xml file provided. """
 
-    import pathlib
+    tree = ElementTree.parse(label_file)
+    root = tree.getroot()
+    labels = {}
+    for label in root.findall("./data/label"):
+        # Labels are one-based, not zero-, because zero is empty space.
+        # But the xml files still start at zero; go figure.
+        idx = int(label.attrib.get('index')) + 1
 
-    if pathlib.Path(label_file).is_file():
-        tree = ElementTree.parse(label_file)
-        root = tree.getroot()
-        labels = {}
-        for label in root.findall("./data/label"):
-            # Labels are one-based, not zero-, because zero is empty space.
-            # But the xml files still start at zero; go figure.
-            idx = int(label.attrib.get('index')) + 1
-            labels[idx] = {
-                "x": label.attrib.get('x'),
-                "y": label.attrib.get('y'),
-                "z": label.attrib.get('z'),
-                "name": label.text,
-                "abbr": abbreviate_label(label.text),
-            }
+        # Manipulate label names from xml to create desired file names.
+        safe_name = label.text
+        if "(" in safe_name:
+            safe_name = safe_name[:safe_name.find("(")].strip()
+        safe_name = safe_name.replace(" ", "_").replace("-", "_")
+        safe_name = safe_name.replace("'", "")
+        abbr = safe_name.replace(",", "").replace("'", "")
+        abbr = abbr.replace("Left", "L").replace("Right", "R")
+        abbr = abbr.replace("_division", "").replace("_part", "")
+        if abbr.endswith("_"):
+            abbr = abbr[:-1]
+        labels[idx] = {
+            "x": label.attrib.get('x'),
+            "y": label.attrib.get('y'),
+            "z": label.attrib.get('z'),
+            "name": label.text,
+            "abbr": abbreviate_label(label.text),
+            "original": label.text,
+            "long": safe_name,
+            "short": abbr,
+        }
 
-        return labels
-    else:
-        raise FileNotFoundError(
-            errno.ENOENT, os.strerror(errno.ENOENT), label_file
-        )
+    return labels
 
 
 def make_binary_mask(config, label, output_file, tool="freesurfer", verbose=False):
@@ -442,27 +468,27 @@ def make_binary_mask(config, label, output_file, tool="freesurfer", verbose=Fals
         print_proc_if_needed(binarize_result, verbose)
 
 
-def combine_masks(mask_a, mask_b, output_path=None, verbose=False):
+def combine_masks(mask_a, mask_b, out_path=None, verbose=False):
     """ Combine two binary masks AND-wise for a combination mask.
     """
 
     print(f"       combined with {mask_b.split('/')[-1]}.")
 
     # Default to overwriting the original mask.
-    if output_path is None:
-        output_path = mask_a
+    if out_path is None:
+        out_path = mask_a
     
     exe = Path(os.environ.get("FSLDIR", "/usr/local/fsl")) / "bin" / "fslmaths"
     
-    combine_command = [exe, mask_a, "-mul", mask_b, output_path, ]
     combine_proc = subprocess.run(
-        combine_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        [str(_) for _ in [exe, mask_a, "-mul", mask_b, out_path]],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
     print_proc_if_needed(combine_proc, verbose)
 
-    bin_command = [exe, output_path, "-bin", output_path, "-odt", "char", ]
     bin_proc = subprocess.run(
-        bin_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        [str(_) for _ in [exe, out_path, "-bin", out_path, "-odt", "char"]],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
     print_proc_if_needed(bin_proc, verbose)
 
@@ -480,68 +506,25 @@ def make_filters(configs, args):
         for num, label in labels.items():
 
             print(f"#{num}. {label.get('abbr')}")
-
-            full_mask_path = Path(args.output_dir) / \
-                f"{args.atlas.lower()}_{label.get('abbr')}_mask{cfg.spec}.nii.gz"
-
             if args.verbose:
                 print(f"  building {cfg.name} {label.get('abbr')} "
                       f"in {args.output_dir} for subject {args.subject}.")
 
-            # FSL does not like FreeSurfer's mgz files, so we must either
-            # convert them to .nii.gz first or use FreeSurfer's tools.
-
             # The raw ROI mask must be created in all cases.
-            out_path = full_mask_path.resolve().parent
-            out_file = f"res-{cfg.res}_{full_mask_path.name}"
-            make_binary_mask(cfg, num, out_path / out_file, args.verbose)
+            # Use the 'short', 'long', 'original', or 'abbr' label specified.
+            atlas_label = f"{args.atlas.lower()}_{label.get(args.labels)}"
+            if args.labels == 'short':
+                out_file = f"{label.get(args.labels)}.nii.gz"
+            else:
+                out_file = f"res-{cfg.res}_{atlas_label}_mask{cfg.spec}.nii.gz"
+            make_binary_mask(cfg, num, Path(args.output_dir) / out_file, args.verbose)
             
             # Only in some cases should we overwrite it with a threshold map.
             if args.contrast_map != "":
-                combine_masks(out_path / out_file, args.contrast_map, args.verbose)
-
-
-def get_labels(label_xml):
-    """ Return label dictionary from xml file provided.
-
-    :param label_xml: The path to the xml label file, usually from FSL
-    :type label_xml: str
-    :returns: a list of dictionaries, one for each label
-    :rtype: list
-    """
-
-    if os.path.isfile(label_xml):
-        tree = ElementTree.parse(label_xml)
-        root = tree.getroot()
-        labels = {}
-        for label in root.findall("./data/label"):
-            safe_name = label.text
-            if "(" in safe_name:
-                safe_name = safe_name[:safe_name.find("(")].strip()
-            safe_name = safe_name.replace(" ", "_").replace("-", "_")
-            safe_name = safe_name.replace("'", "")
-            abbr = safe_name.replace(",", "").replace("'", "")
-            abbr = abbr.replace("Left", "L").replace("Right", "R")
-            abbr = abbr.replace("_division", "").replace("_part", "")
-            if abbr.endswith("_"):
-                abbr = abbr[:-1]
-            # Labels are one-based, not zero-, because zero is empty space.
-            # But the xml files still start at zero; go figure.
-            idx = int(label.attrib.get('index')) + 1
-            labels[idx] = {
-                "x": label.attrib.get('x'),
-                "y": label.attrib.get('y'),
-                "z": label.attrib.get('z'),
-                "original": label.text,
-                "long": safe_name,
-                "short": abbr,
-            }
-
-        return labels
-    else:
-        raise FileNotFoundError(
-            errno.ENOENT, os.strerror(errno.ENOENT), label_xml
-        )
+                combine_masks(
+                    Path(args.output_dir) / out_file, args.contrast_map,
+                    verbose=args.verbose
+                )
 
 
 def print_proc_if_needed(proc, verbose=False):
@@ -563,7 +546,13 @@ def atlas_file(atlas, subtype, threshold, resolution):
 
 
 def main(args):
-    """ entry point """
+    """ entry point
+
+        For each atlas, an AtlasConfig is created with the details necessary
+        for building masks. The 'labels' can be an FSL-style xml file or an
+        Atlas object defined above. That AtlasConfig is then passed off to
+        have masks generated from it.
+    """
 
     fsl_dir = Path(os.environ.get("FSLDIR", "/usr/local/fsl"))
     fsl_basepath = fsl_dir / "data" / "atlases"
@@ -663,7 +652,7 @@ def main(args):
     elif args.atlas.lower() in ["Thal".lower(), ]:
         atlas_config = AtlasConfig(
             base_path=f"/mnt/derivatives/{args.project}/freesurfer7/"
-                        f"sub-{args.subject.replace('T', 'U')}/mri",
+                      f"sub-{args.subject.replace('T', 'U')}/mri",
             atlas="ThalamicNuclei.v12.T1.mgz",
             labels=Atlas(args.atlas),
             spec=".T1",
