@@ -54,7 +54,11 @@ def get_arguments():
         # Treat output as a directory
         setattr(args, "output_file", "")
         Path(args.input).mkdir(parents=True, exist_ok=True)
-        setattr(args, "output_dir", args.output)
+        if len(args.output) > 0:
+            setattr(args, "output_dir", args.output)
+        else:
+            setattr(args, "output_dir", args.input)
+            print("Overwriting original with new file, Ctrl-C NOW to cancel")
         
     return args
 
