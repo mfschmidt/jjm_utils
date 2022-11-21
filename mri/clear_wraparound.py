@@ -60,7 +60,8 @@ def get_arguments():
             setattr(args, "output_dir", args.output)
         else:
             setattr(args, "output_dir", args.input)
-            print("Overwriting original with new file, Ctrl-C NOW to cancel")
+            print("\033[31mOverwriting originals with new files, "
+                  "Ctrl-C NOW to cancel.\033[0m")
         
     return args
 
