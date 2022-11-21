@@ -30,7 +30,9 @@ def get_arguments():
     )
     parser.add_argument(
         "--output", type=str, default="",
-        help="The directory or filename to save",
+        help="The directory or filename to save to. "
+             "If omitted, the input directory is used, "
+             "and will overwrite originals.",
     )
     parser.add_argument(
         "--verbose", action="store_true",
