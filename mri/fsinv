@@ -39,23 +39,34 @@ if [[ -e "$1" ]]; then
   fi
   
   # Hippocampus and Amygdala Subfield Labels
-  if [[ -e "${1}/mri/lh.hippoAmygLabels-T1.v21.mgz" ]]; then
-    if [[ -e "${1}/mri/lh.hippoAmygLabels-T1-T2.v21.mgz" ]]; then
-      HA="2HA"
-    else
-      HA="1HA"
-    fi
-  else
-    HA="0HA"
+  HA_COUNT=0
+  T1sL=$(2>/dev/null ls -1 ${1}/mri/lh.hippoAmygLabels-T1.*.mgz)
+  if [[ "${T1sL}" != "" ]]; then
+    HA_COUNT=$(( $HA_COUNT + 1 ))
   fi
+  T1sR=$(2>/dev/null ls -1 ${1}/mri/rh.hippoAmygLabels-T1.*.mgz)
+  if [[ "${T1sR}" != "" ]]; then
+    HA_COUNT=$(( $HA_COUNT + 1 ))
+  fi
+  T2sL=$(2>/dev/null ls -1 ${1}/mri/lh.hippoAmygLabels-T1-T2.*.mgz)
+  if [[ "${T2sL}" != "" ]]; then
+    HA_COUNT=$(( $HA_COUNT + 1 ))
+  fi
+  T2sR=$(2>/dev/null ls -1 ${1}/mri/rh.hippoAmygLabels-T1-T2.*.mgz)
+  if [[ "${T2sR}" != "" ]]; then
+    HA_COUNT=$(( $HA_COUNT + 1 ))
+  fi
+  HA="${HA_COUNT}HA"
 
   # Brainstem Nuclei Labels
-  if [[ -e "${1}/mri/brainstemSsLabels.v12.mgz" ]]; then
+  BSs=$(2>/dev/null ls -1 ${1}/mri/brainstemSsLabels.*.mgz)
+  if [[ "${BSs}" != "" ]]; then
     BS="BSN"; else BS="   "
   fi
 
   # Thalamic Nuclei Labels
-  if [[ -e "${1}/mri/ThalamicNuclei.v12.T1.mgz" ]]; then
+  THs=$(2>/dev/null ls -1 ${1}/mri/ThalamicNuclei.*.mgz)
+  if [[ "${THs}" != "" ]]; then
     TH="ThN"; else TH="   "
   fi
 
