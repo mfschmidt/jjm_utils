@@ -428,13 +428,25 @@ class FMRIPrepBatch(SlurmBatch):
                     f"  --mem {self.args.memory_gb}",
                     f"  --output-spaces {self.args.output_spaces}",
                 ]
+                if self.args.fs_subjects_dir is not None:
+                    further_arguments += [
+                        f"  --fs-subjects-dir /subjects",
+                    ]
+                    # /subjects/ is mapped to host path in singularity_mounts()
         return " \\\n".join(further_arguments)
 
     def singularity_mounts(self):
         """ Return the mounts necessary for running the pipeline
         """
 
+        if self.args.fs_subjects_dir is not None:
+            subjects_dict = {
+                "host_path": self.args.fs_subjects_dir,
+                "cont_path": "/subjects/",
+                "permissions": "rw",
+            }
         return super().singularity_mounts() + [
+            subjects_dict,
             {"host_path": self.args.work_directory,
              "cont_path": "/work/",
              "permissions": "rw", },
@@ -648,6 +660,11 @@ def get_arguments():
         "--subjects-dir",
         default=user_settings.get("subjects-dir"),
         help="The path to write freesurfer output",
+    )
+    parser.add_argument(
+        "--fs-subjects-dir",
+        default=None,
+        help="The path for fMRIPrep to check for freesurfer output",
     )
     parser.add_argument(
         "--log-file",
