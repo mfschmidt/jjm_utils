@@ -120,6 +120,14 @@ def mod_confounds(args):
         if args.verbose:
             print(f" {len(confounds_data.columns)} cols via 'scrubbing'")
 
+    if args.start_tr is not None and args.start_tr > 0:
+        confounds_data = confounds_data.iloc[args.start_tr:, :]
+        print(f" {len(confounds_data.index)} x {len(confounds_data.columns)}  via '--start-tr'")
+
+    if args.total_trs is not None and args.total_trs > 0:
+        confounds_data = confounds_data.iloc[:args.total_trs, :]
+        print(f" {len(confounds_data.index)} x {len(confounds_data.columns)}  via '--total-trs'")
+
     print("Read [{} TRs x {} regressors] confounds, writing [{} x {}]".format(
         full_shape[0], full_shape[1],
         confounds_data.shape[0], confounds_data.shape[1]
@@ -167,6 +175,14 @@ def get_arguments():
     parser.add_argument(
         "-s", "--scrub", action="store_true",
         help="Set to include motion outlier TRs as one-hot regressors",
+    )
+    parser.add_argument(
+        "--start-tr", type=int, default=0,
+        help="Crop TRs before this, a '--start-tr 5' removes first five TRs.",
+    )
+    parser.add_argument(
+        "--total-trs", type=int, default=None,
+        help="Set to number of TRs, by default all TRs to the end are used.",
     )
     parser.add_argument(
         "-f", "--force", action="store_true",
