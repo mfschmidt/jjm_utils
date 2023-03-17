@@ -267,7 +267,7 @@ def make_sidecar(task):
         }
         stimulus_description = (
             "The stimulus presented to the participant. "
-            "Images beginning with '1' are coded by IAPS to be emotional "
+            "Images beginning with '1' are coded to be emotional "
             "and are displayed in 'emot' trial_types. "
             "Images beginning with '2' are coded as neutral and are in "
             "'neut' trial_types. "
@@ -282,7 +282,7 @@ def make_sidecar(task):
             "the stimulus to be neutral."
         )
         correct_description = (
-            "If the participant and IAPS agree on the emotionality of "
+            "If the participant agrees with the coding on the emotionality of "
             "the image, 'correct' is '1', otherwise it is '0'."
         )
     elif task == "test":
@@ -316,7 +316,7 @@ def make_sidecar(task):
         }
         stimulus_description = (
             "The stimulus presented to the participant. "
-            "Images beginning with '1' or '4' are coded by IAPS to be "
+            "Images beginning with '1' or '4' are coded to be "
             "emotional and are displayed in 'emot' trial_types. "
             "Images beginning with '2' or '5' are coded as neutral and are in "
             "'neut' trial_types. "
@@ -436,13 +436,13 @@ def extract_timing(xl_file, shift=0.0, verbose=False):
     return events
 
 
-def get_one_matching_row(iaps_num, dataframe):
-    iaps_filter = dataframe['stimulus'].str.contains(iaps_num)
-    df = dataframe[iaps_filter][['trial_type', 'stimulus', 'response', ]]
-    # There should be only one event in test matching the iaps number
+def get_one_matching_row(img_num, dataframe):
+    img_filter = dataframe['stimulus'].str.contains(img_num)
+    df = dataframe[img_filter][['trial_type', 'stimulus', 'response', ]]
+    # There should be only one event in test matching the img number
     if len(df) == 1:
         return df.iloc[0]
-    warn(f"  IAPS #{iaps_num} has {len(df)} events in test.")
+    warn(f"  IMG #{img_num} has {len(df)} events in test.")
     return None
 
 
