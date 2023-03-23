@@ -437,6 +437,10 @@ class FMRIPrepBatch(SlurmBatch):
                 further_arguments += [
                     f"  --ignore {self.args.ignore}",
                 ]
+            if self.args.skip_bids_validation:
+                further_arguments += [
+                    "  --skip-bids-validation",
+                ]
         return " \\\n".join(further_arguments)
 
     def singularity_mounts(self):
@@ -705,6 +709,11 @@ def get_arguments():
         "--pipeline-version",
         default=user_settings.get("pipeline-version"),
         help="The version of the docker/singularity pipeline to run",
+    )
+    parser.add_argument(
+        "--skip-bids-validation",
+        action='store_true',
+        help="Skip the BIDS validation",
     )
     parser.add_argument(
         "--slurm-partition",
