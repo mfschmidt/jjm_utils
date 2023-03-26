@@ -19,6 +19,7 @@ import pandas as pd
 from pathlib import Path
 from numbers import Number
 from warnings import warn
+import sys
 
 
 # Trigger printing in red to highlight problems
@@ -31,7 +32,7 @@ def get_arguments():
     """ Parse command line arguments """
 
     parser = argparse.ArgumentParser(
-        description="From an excel or text file exported from ePrime and "
+        description="From an excel file exported from psychopy, "
                     "containing events and timings of an experiment, "
                     "export BIDS-compatible tsvs and jsons.",
     )
@@ -106,9 +107,18 @@ def get_arguments():
               f"session '{parsed_args.session}'")
 
     # Did we get a study or events file, and where's the other one?
-    study_file, test_file = find_both_excel_files(parsed_args.events_file)
-    setattr(parsed_args, "study_events_file", study_file)
-    setattr(parsed_args, "test_events_file", test_file)
+    study_file, test_file = find_both_excel_files(
+        Path(parsed_args.events_file).resolve()
+    )
+    if (
+            study_file is not None and study_file.exists()
+            and test_file is not None and test_file.exists()
+    ):
+        setattr(parsed_args, "study_events_file", study_file)
+        setattr(parsed_args, "test_events_file", test_file)
+    else:
+        print("Both study and events files must exist to build events.")
+        sys.exit(1)
 
     return parsed_args
 
@@ -258,13 +268,17 @@ def make_sidecar(task):
     # The events.tsv files created in this script contain four columns
     # expected by BIDS. They also contain additional columns that should
     # be described in this accompanying sidecar file.
+    response_time_description = (
+        "The time elapsed between the display of the image and "
+        "the participant's button press."
+    )
+    trial_type_levels = {
+        "neut": "A 2.5ish second period while a neutral picture is "
+                "presented to the participant",
+        "emot": "A 2.5ish second period while an emotional picture is "
+                "presented to the participant",
+    }
     if task == "study":
-        levels = {
-            "neut_stim": "A 2.5ish second period while a neutral picture is "
-                         "presented to the participant",
-            "emot_stim": "A 2.5ish second period while an emotional picture is "
-                         "presented to the participant",
-        }
         stimulus_description = (
             "The stimulus presented to the participant. "
             "Images beginning with '1' are coded to be emotional "
@@ -285,34 +299,35 @@ def make_sidecar(task):
             "If the participant agrees with the coding on the emotionality of "
             "the image, 'correct' is '1', otherwise it is '0'."
         )
+        data = {
+            "trial_type": {
+                "LongName": "Event category",
+                "Description": "Type of image that is displayed, emot or neut",
+                "Levels": trial_type_levels
+            },
+            "stimulus": {
+                "Description": stimulus_description,
+            },
+            "response": {
+                "Description": response_description,
+            },
+            "response_time": {
+                "Description": response_time_description,
+            },
+            "correct": {
+                "Description": correct_description,
+            },
+        }
     elif task == "test":
-        levels = {
-            "neut_new": "A 2.5ish second period while a neutral picture "
-                        "that has not been seen before is presented to the "
-                        "participant.",
-            "neut_old": "A 2.5ish second period while a neutral picture "
-                        "that is identical to one seen in the study phase "
-                        "is presented to the participant.",
-            "neut_hsim": "A 2.5ish second period while a neutral picture "
-                         "that is highly similar, but not identical, to one "
-                         "presented in the study phase is presented to the "
-                         "participant.",
-            "neut_lsim": "A 2.5ish second period while a neutral picture "
-                         "with low similarity to one presented in "
-                         "the study phase is presented to the participant.",
-            "emot_new": "A 2.5ish second period while a neutral picture "
-                        "that has not been seen before is presented to the "
-                        "participant.",
-            "emot_old": "A 2.5ish second period while a neutral picture "
-                        "that is identical to one seen in the study phase "
-                        "is presented to the participant.",
-            "emot_hsim": "A 2.5ish second period while a neutral picture "
-                         "that is highly similar, but not identical, to one "
-                         "presented in the study phase is presented to the "
-                         "participant.",
-            "emot_lsim": "A 2.5ish second period while a neutral picture "
-                         "with low similarity to one presented in "
-                         "the study phase is presented to the participant.",
+        sim_levels = {
+            "new": "The displayed picture is new, and was not presented "
+                   "during the study task.",
+            "old": "The displayed picture is identical to a picture already "
+                   "presented in the study task.",
+            "hsim": "The displayed picture is highly similar, "
+                    "but not identical, to one presented in the study task.",
+            "lsim": "The displayed picture has low similarity to one "
+                    "presented in the study task.",
         }
         stimulus_description = (
             "The stimulus presented to the participant. "
@@ -323,18 +338,18 @@ def make_sidecar(task):
             "Images ending with 'a' are original images, meaning that if they "
             "start with '1' or '2', they were seen in the study phase; if "
             "they start with '4' or '5', they are new in this phase. All 'a' "
-            "images should correspond with 'new' or 'old' trial_types. "
+            "images should correspond with 'new' or 'old' sim_types. "
             "Images ending with 'b' are low-similarity lures of an 'a' image "
             "with the same number in the study phase. "
             "Images ending with 'c' are high-similarity lures of an 'a' image "
-            "with the same number in the study phase. "
+            "with the same number in the study phase."
         )
         response_description = (
             "The participant's response to the stimulus. "
             "The '3' button indicates the participant remembers this exact "
             "image from the study phase. "
             "The '4' button indicates the participant does not remember this "
-            "exact image from the study phase. "
+            "exact image from the study phase."
         )
         correct_description = (
             "If the participant correctly identifies an image from the "
@@ -346,28 +361,36 @@ def make_sidecar(task):
             "Responding '3' to a non-'old' image or '4' to an 'old' image "
             "is incorrect, and 'correct' is '0'."
         )
+        data = {
+            "trial_type": {
+                "LongName": "Event category",
+                "Description": "Type of picture that is displayed, "
+                               "emot or neut",
+                "Levels": trial_type_levels
+            },
+            "sim_type": {
+                "LongName": "Event category",
+                "Description": "History of picture that is displayed, how "
+                               "similar it is to a picture from the study task",
+                "Levels": sim_levels
+            },
+            "stimulus": {
+                "Description": stimulus_description,
+            },
+            "response": {
+                "Description": response_description,
+            },
+            "response_time": {
+                "Description": response_time_description,
+            },
+            "correct": {
+                "Description": correct_description,
+            },
+        }
     else:
-        levels = {}
-        stimulus_description = "n/a"
-        response_description = "n/a"
-        correct_description = "n/a"
+        data = None
+        print(f"ERROR: Unsupported task '{task}'")
 
-    data = {
-        "trial_type": {
-            "LongName": "Event category",
-            "Description": "Indicator of type of action that is expected",
-            "Levels": levels
-        },
-        "stimulus": {
-            "Description": stimulus_description,
-        },
-        "response": {
-            "Description": response_description,
-        },
-        "correct": {
-            "Description": correct_description,
-        },
-    }
     return data
 
 
@@ -453,6 +476,13 @@ def finalize_study_runs(study_runs, test_runs):
     # perceived the image as emotional or not.
     # study_runs = study_runs.rename(columns={"correct": "perceived_emot"})
 
+    # Was this image re-presented in the test task?
+    def sim_type_in_test(stim):
+        s = get_one_matching_row(stim[:5], test_runs)
+        if s is not None:
+            return str(s['trial_type']).split("_")[-1]
+        return "n/a"
+
     # Modeling encoding, it might be useful to know if retrieval events
     # using each image were successful.
     def remembered_in_test(stim):
@@ -465,10 +495,10 @@ def finalize_study_runs(study_runs, test_runs):
                     else:
                         return '0'
                 else:
-                    warn("trial_type old, but stimulus not 'a'")
+                    warn("sim_type old, but stimulus not 'a'")
             else:
                 if "a" in str(s['stimulus']):
-                    warn("stimulus 'a', but trial_type not 'old'")
+                    warn("stimulus 'a', but sim_type not 'old'")
         return "n/a"
 
     def discriminated_hsim_in_test(stim):
@@ -481,10 +511,10 @@ def finalize_study_runs(study_runs, test_runs):
                     else:
                         return '0'
                 else:
-                    warn("trial_type 'hsim', but stimulus not 'c'")
+                    warn("sim_type 'hsim', but stimulus not 'c'")
             else:
                 if "c" in str(s['stimulus']):
-                    warn("stimulus 'c', but trial_type not 'hsim'")
+                    warn("stimulus 'c', but sim_type not 'hsim'")
         return "n/a"
 
     def discriminated_lsim_in_test(stim):
@@ -497,12 +527,15 @@ def finalize_study_runs(study_runs, test_runs):
                     else:
                         return '0'
                 else:
-                    warn("trial_type 'hsim', but stimulus not 'b'")
+                    warn("sim_type 'lsim', but stimulus not 'b'")
             else:
                 if "b" in str(s['stimulus']):
-                    warn("stimulus 'b', but trial_type not 'lsim'")
+                    warn("stimulus 'b', but sim_type not 'lsim'")
         return "n/a"
 
+    study_runs['sim_type'] = study_runs['stimulus'].apply(
+        sim_type_in_test
+    )
     study_runs['test_corr_remembered'] = study_runs['stimulus'].apply(
         remembered_in_test
     )
@@ -513,7 +546,11 @@ def finalize_study_runs(study_runs, test_runs):
         discriminated_lsim_in_test
     )
 
-    return study_runs
+    return study_runs[
+        ['onset', 'duration', 'trial_type', 'sim_type', 'stimulus', 'response',
+         'response_time', 'correct', 'test_corr_remembered',
+         'test_corr_hsim_discriminated', 'test_corr_lsim_discriminated']
+    ].sort_values('onset')
 
 
 def finalize_test_runs(test_runs, study_runs):
@@ -533,11 +570,28 @@ def finalize_test_runs(test_runs, study_runs):
                 return '0'
         return "n/a"
 
+    # Split up existing trial_type values like 'emot_hsim' into
+    # an 'emot' trial_type and 'hsim' sim_type
+    def sim_type(trial_type):
+        return trial_type.split("_")[-1]
+
+    def std_trial_type(trial_type):
+        return trial_type.split("_")[0]
+
     test_runs['perceived_emot'] = test_runs['stimulus'].apply(
         perceived_emot
     )
+    test_runs['sim_type'] = test_runs['trial_type'].apply(
+        sim_type
+    )
+    test_runs['trial_type'] = test_runs['trial_type'].apply(
+        std_trial_type
+    )
 
-    return test_runs
+    return test_runs[
+        ['onset', 'duration', 'trial_type', 'sim_type', 'stimulus', 'response',
+         'response_time', 'perceived_emot', 'correct', ]
+    ].sort_values('onset')
 
 
 def main(args):
