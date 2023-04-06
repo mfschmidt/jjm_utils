@@ -32,13 +32,13 @@ def get_arguments():
     """ Parse command line arguments """
 
     parser = argparse.ArgumentParser(
-        description="From an excel file exported from psychopy, "
+        description="From spreadsheet exported from psychopy, "
                     "containing events and timings of an experiment, "
                     "export BIDS-compatible tsvs and jsons.",
     )
     parser.add_argument(
         "events_file",
-        help="the xlsx events file, could be from study or test.",
+        help="the xlsx or csv events file, could be from study or test.",
     )
     parser.add_argument(
         "output_dir",
@@ -159,7 +159,11 @@ def find_both_excel_files(one_excel_file):
         # This will always be the case in Christina's home directory
         related_excel_files = list(
             one_excel_file.parent.parent.parent.glob(
-                f"*/*/[A-Za-z0-9]*{task_to_find}*.xlsx"
+                f"{task_to_find}/excel/[A-Za-z0-9]*{task_to_find}*.xlsx"
+            )
+        ) + list(
+            one_excel_file.parent.parent.parent.glob(
+                f"{task_to_find}/excel/[A-Za-z0-9]*{task_to_find}*.csv"
             )
         )
 
@@ -238,6 +242,10 @@ def row_as_event(row):
     except ValueError:
         response = "n/a"
 
+    # For all tasks, 'correct' is treated the same here.
+    # But later, its name is changed to 'agree_emot' for study tasks,
+    # allowing 'correct' to indicate whether an image was correctly
+    # discriminated in the test task (in both study and test events files).
     try:
         correct = str(int(row["key_resp_img.corr"]))
     except ValueError:
@@ -275,13 +283,13 @@ def make_sidecar(task):
     trial_type_levels = {
         "neut": "A 2.5ish second period while a neutral picture is "
                 "presented to the participant",
-        "emot": "A 2.5ish second period while an emotional picture is "
+        "emot": "A 2.5ish second period while a negative picture is "
                 "presented to the participant",
     }
     if task == "study":
         stimulus_description = (
             "The stimulus presented to the participant. "
-            "Images beginning with '1' are coded to be emotional "
+            "Images beginning with '1' are coded to be negative "
             "and are displayed in 'emot' trial_types. "
             "Images beginning with '2' are coded as neutral and are in "
             "'neut' trial_types. "
@@ -291,19 +299,29 @@ def make_sidecar(task):
         response_description = (
             "The participant's response to the stimulus. "
             "The '3' button indicates the participant perceived "
-            "the stimulus to be emotional. "
+            "the stimulus to be negative. "
             "The '4' button indicates the participant perceived "
-            "the stimulus to be neutral."
+            "the stimulus to be neutral. "
+            "This value in task-study corresponds to the "
+            "'perceived_emot' value in the task-test events."
+        )
+        agree_description = (
+            "If the participant agrees with the coding on the negativity of "
+            "the image, 'agree_emot' is '1', otherwise it is '0'."
         )
         correct_description = (
-            "If the participant agrees with the coding on the emotionality of "
-            "the image, 'correct' is '1', otherwise it is '0'."
+            "If the participant correctly recognizes this stimulus as 'old' "
+            "or discriminates its corresponding lure as a lure in the "
+            "later 'test' task, 'correct' is '1', otherwise it is '0'."
         )
         data = {
             "trial_type": {
                 "LongName": "Event category",
                 "Description": "Type of image that is displayed, emot or neut",
                 "Levels": trial_type_levels
+            },
+            "sim_type": {
+                "Description": "The similarity type in the later task-test.",
             },
             "stimulus": {
                 "Description": stimulus_description,
@@ -313,6 +331,9 @@ def make_sidecar(task):
             },
             "response_time": {
                 "Description": response_time_description,
+            },
+            "agree_emot": {
+                "Description": agree_description,
             },
             "correct": {
                 "Description": correct_description,
@@ -332,7 +353,7 @@ def make_sidecar(task):
         stimulus_description = (
             "The stimulus presented to the participant. "
             "Images beginning with '1' or '4' are coded to be "
-            "emotional and are displayed in 'emot' trial_types. "
+            "negative and are displayed in 'emot' trial_types. "
             "Images beginning with '2' or '5' are coded as neutral and are in "
             "'neut' trial_types. "
             "Images ending with 'a' are original images, meaning that if they "
@@ -351,6 +372,10 @@ def make_sidecar(task):
             "The '4' button indicates the participant does not remember this "
             "exact image from the study phase."
         )
+        perceived_emot_description = (
+            "The image displayed in this event was perceived by the "
+            "participant to be negative in the prior 'study' task. "
+        )
         correct_description = (
             "If the participant correctly identifies an image from the "
             "study phase being re-shown in the test phase, by responding "
@@ -359,7 +384,8 @@ def make_sidecar(task):
             "was not shown in the study phase ('new', 'hsim', 'lsim') by "
             "responding with the '4' button, 'correct' is also '1'. "
             "Responding '3' to a non-'old' image or '4' to an 'old' image "
-            "is incorrect, and 'correct' is '0'."
+            "is incorrect, and 'correct' is '0'. This value corresponds "
+            "to the 'correct' value in task-study events."
         )
         data = {
             "trial_type": {
@@ -382,6 +408,9 @@ def make_sidecar(task):
             },
             "response_time": {
                 "Description": response_time_description,
+            },
+            "perceived_emot": {
+                "Description": perceived_emot_description,
             },
             "correct": {
                 "Description": correct_description,
@@ -441,9 +470,21 @@ def extract_timing(xl_file, shift=0.0, verbose=False):
     """
 
     # Load Excel data
-    sheet = pd.read_excel(
-        xl_file, sheet_name=0, engine="openpyxl", skiprows=0,
-    )
+    if xl_file.name.endswith("xlsx"):
+        sheet = pd.read_excel(
+            xl_file, sheet_name=0, engine="openpyxl", skiprows=0,
+        )
+    elif xl_file.name.endswith("csv"):
+        sheet = pd.read_csv(
+            xl_file, sep=',', header=0, index_col=None,
+        )
+    elif xl_file.name.endswith("tsv"):
+        sheet = pd.read_csv(
+            xl_file, sep='\t', header=0, index_col=None,
+        )
+    else:
+        print(f"Data file is neither .xlsx nor .csv so I give up!")
+        return None
     if verbose:
         print(f"read {len(sheet)} rows and {len(sheet.columns)} columns "
               f"from {xl_file}.")
@@ -472,9 +513,12 @@ def get_one_matching_row(img_num, dataframe):
 def finalize_study_runs(study_runs, test_runs):
     """ Add variables and finalize the study events dataframe. """
 
-    # The 'correct' column actually indicates whether the participant
-    # perceived the image as emotional or not.
-    # study_runs = study_runs.rename(columns={"correct": "perceived_emot"})
+    # The original 'correct' column actually indicates whether the participant
+    # perceived the image as negative or not. This can be confusing because
+    # this is neither correct nor incorrect, and we also want to use 'correct'
+    # to indicate whether this stimulus was correctly discriminated later.
+    # So we change its name from 'correct' to 'agree_emot'.
+    study_runs = study_runs.rename(columns={"correct": "agree_emot"})
 
     # Was this image re-presented in the test task?
     def sim_type_in_test(stim):
@@ -485,7 +529,7 @@ def finalize_study_runs(study_runs, test_runs):
 
     # Modeling encoding, it might be useful to know if retrieval events
     # using each image were successful.
-    def remembered_in_test(stim):
+    def discriminated_in_test(stim):
         s = get_one_matching_row(stim[:5], test_runs)
         if s is not None:
             if str(s['trial_type']).endswith("old"):
@@ -496,15 +540,7 @@ def finalize_study_runs(study_runs, test_runs):
                         return '0'
                 else:
                     warn("sim_type old, but stimulus not 'a'")
-            else:
-                if "a" in str(s['stimulus']):
-                    warn("stimulus 'a', but sim_type not 'old'")
-        return "n/a"
-
-    def discriminated_hsim_in_test(stim):
-        s = get_one_matching_row(stim[:5], test_runs)
-        if s is not None:
-            if str(s['trial_type']).endswith("hsim"):
+            elif str(s['trial_type']).endswith("hsim"):
                 if "c" in str(s['stimulus']):
                     if str(s['response']) == '4':
                         return '1'
@@ -512,15 +548,7 @@ def finalize_study_runs(study_runs, test_runs):
                         return '0'
                 else:
                     warn("sim_type 'hsim', but stimulus not 'c'")
-            else:
-                if "c" in str(s['stimulus']):
-                    warn("stimulus 'c', but sim_type not 'hsim'")
-        return "n/a"
-
-    def discriminated_lsim_in_test(stim):
-        s = get_one_matching_row(stim[:5], test_runs)
-        if s is not None:
-            if str(s['trial_type']).endswith("lsim"):
+            elif str(s['trial_type']).endswith("lsim"):
                 if "b" in str(s['stimulus']):
                     if str(s['response']) == '4':
                         return '1'
@@ -528,28 +556,19 @@ def finalize_study_runs(study_runs, test_runs):
                         return '0'
                 else:
                     warn("sim_type 'lsim', but stimulus not 'b'")
-            else:
-                if "b" in str(s['stimulus']):
-                    warn("stimulus 'b', but sim_type not 'lsim'")
+
+        # Anything not matching expectation gets 'n/a'
         return "n/a"
 
     study_runs['sim_type'] = study_runs['stimulus'].apply(
         sim_type_in_test
     )
-    study_runs['test_corr_remembered'] = study_runs['stimulus'].apply(
-        remembered_in_test
+    study_runs['correct'] = study_runs['stimulus'].apply(
+        discriminated_in_test
     )
-    study_runs['test_corr_hsim_discriminated'] = study_runs['stimulus'].apply(
-        discriminated_hsim_in_test
-    )
-    study_runs['test_corr_lsim_discriminated'] = study_runs['stimulus'].apply(
-        discriminated_lsim_in_test
-    )
-
     return study_runs[
         ['onset', 'duration', 'trial_type', 'sim_type', 'stimulus', 'response',
-         'response_time', 'correct', 'test_corr_remembered',
-         'test_corr_hsim_discriminated', 'test_corr_lsim_discriminated']
+         'response_time', 'agree_emot', 'correct', ]
     ].sort_values('onset')
 
 
@@ -557,7 +576,7 @@ def finalize_test_runs(test_runs, study_runs):
     """ Add variables and finalize the study events dataframe. """
 
     # Modeling decoding, it might be useful to know if encoding events
-    # were perceived by the participant as emotional, regardless of coding.
+    # were perceived by the participant as negative, regardless of coding.
     def perceived_emot(stim):
         if str(stim)[0] in ['4', '5', ]:
             # It's a new image, don't bother looking it up.

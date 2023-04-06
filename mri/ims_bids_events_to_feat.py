@@ -127,6 +127,10 @@ def get_arguments():
     # Assess/tweak arguments
     parsed_args = parser.parse_args()
 
+    # Use Path objects rather than strings
+    setattr(parsed_args, "events_file", Path(parsed_args.events_file))
+    setattr(parsed_args, "output_path", Path(parsed_args.output_path))
+
     # The --use-response argument is essentially a shortcut to implement both
     # --use-response-from and --use-response-to as the same trial_type.
     assert (
@@ -150,7 +154,7 @@ def metadata_from_path(path):
     """
 
     bids_map = {}
-    pairs = re.findall(r"([A-Za-z0-9]+)-([A-Za-z0-9]+)", path)
+    pairs = re.findall(r"([A-Za-z0-9]+)-([A-Za-z0-9]+)", str(path))
     for pair in pairs:
         if pair[0] in bids_map:
             # This is a duplicate, like sub or ses being in path and file
@@ -209,39 +213,61 @@ def main(args):
     data = get_events_data(args.events_file, args.shift)
 
     # Do the work
-    Path(args.output_path).mkdir(parents=True, exist_ok=True)
+    args.output_path.mkdir(parents=True, exist_ok=True)
     # if metadata['task'] == 'test':
     #     build_test_regressors(data)
     # elif metadata['task'] == 'study':
     #     build_study_regressors(data)
 
     # We hard-code explicit assumptions about columns that must be in the file.
+    # Every run needs all files, even if they're empty.
     no_filter = pd.Series([True, ] * len(data.index))
     for trial in ['all', 'emot', 'neut', ]:
         if trial == 'all':
             trial_filter = no_filter
         else:
             trial_filter = data['trial_type'] == trial
-        for sim in ['all', 'old', 'hsim', 'lsim', 'new', ]:
-            if sim == 'all':
-                sim_filter = no_filter
+        for response in ['all', '3', '4', 'n/a', ]:
+            if response == 'all':
+                resp_filter = no_filter
             else:
-                sim_filter = data['sim_type'] == sim
-            for correct in ['all', '1', '0', 'n/a', ]:
-                if correct == 'all':
-                    corr_filter = no_filter
+                resp_filter = data['response'] == response
+            for sim in ['all', 'old', 'hsim', 'lsim', 'new', ]:
+                if sim == 'all':
+                    sim_filter = no_filter
                 else:
-                    corr_filter = data['correct'] == correct
-                regressors = data[
-                    trial_filter & sim_filter & corr_filter
-                ][['onset', 'duration', 'ones']]
-                filename = "trial-{}_sim-{}_corr-{}.txt".format(
-                    trial, sim, correct.replace("/", "")
-                )
-                regressors.to_csv(
-                    Path(args.output_path) / filename,
-                    sep='\t', index=None, header=None, float_format='%0.3f'
-                )
+                    sim_filter = data['sim_type'] == sim
+                for correct in ['all', '0', '1', 'n/a', ]:
+                    if correct == 'all':
+                        corr_filter = no_filter
+                    else:
+                        corr_filter = data['correct'] == correct
+                    # Filter out regressors for this specific context
+                    regressors = data[
+                        trial_filter & sim_filter & corr_filter & resp_filter
+                    ][['onset', 'duration', 'ones']]
+                    # And if they're empty, create a null regressor
+                    if len(regressors.index) == 0:
+                        regressors = pd.DataFrame([{
+                            "onset": 0.0, "duration": 0.0, "ones": 0,
+                        }])
+                    # Save it to disk
+                    if metadata['task'] == 'study' and sim == 'new':
+                        # No such thing as 'new' similarity in study task
+                        # We have chosen not to write these empty files.
+                        pass
+                    else:
+                        filename = "_".join([
+                            f"trial-{trial}",
+                            f"response-{response.replace('/', '')}",
+                            f"sim-{sim}",
+                            f"correct-{correct.replace('/', '')}",
+                        ]) + ".txt"
+                        regressors.to_csv(
+                            args.output_path / filename,
+                            sep='\t', index=False, header=False,
+                            float_format='%0.3f'
+                        )
 
 
 if __name__ == "__main__":
