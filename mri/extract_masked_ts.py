@@ -51,7 +51,7 @@ def get_arguments():
         usage=usage_str,
     )
     parser.add_argument(
-        "--bold-file", "--bold_file",
+        "--bold-file", "--bold_file", required=True,
         help="The 4D BOLD file containing fMRIPrep-preprocessed data.",
     )
     parser.add_argument(
@@ -87,22 +87,18 @@ def get_arguments():
     pattern = re.compile(
         r"sub-([A-Z][0-9]+)_ses-([0-9]+)_task-([a-z]+)_run-([0-9]+)"
     )
-    if "bold_file" in args and args.bold_file is not None:
-        if Path(args.bold_file).exists():
-            setattr(args, "bold_file", Path(args.bold_file))
-            match = pattern.search(args.bold_file.name)
-            if match:
-                setattr(args, "subject", match.group(1))
-                setattr(args, "session", match.group(2))
-                setattr(args, "task", match.group(3))
-                setattr(args, "run", match.group(4))
-            else:
-                print(f"Found BOLD file, but could not determine subject & session")
+    if Path(args.bold_file).exists():
+        setattr(args, "bold_file", Path(args.bold_file))
+        match = pattern.search(args.bold_file.name)
+        if match:
+            setattr(args, "subject", match.group(1))
+            setattr(args, "session", match.group(2))
+            setattr(args, "task", match.group(3))
+            setattr(args, "run", match.group(4))
         else:
-            print(f"Could not find BOLD file at '{args.bold_file}'.")
-            ok_to_run = False
+            print(f"Found BOLD file, but could not determine subject & session")
     else:
-        print(usage_str)
+        print(f"Could not find BOLD file at '{args.bold_file}'.")
         ok_to_run = False
 
     # Use Path objects rather than strings, and make sure they exist.
