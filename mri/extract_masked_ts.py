@@ -83,10 +83,9 @@ def get_arguments():
     args = parser.parse_args()
     ok_to_run = True
 
-    # Figure out the subject
-    pattern = re.compile(
-        r"sub-([A-Z][0-9]+)_ses-([0-9]+)_task-([a-z]+)_run-([0-9]+)"
-    )
+    # Figure out the subject, session, and task.
+    # We would also like run, but need to match even for task-study w/o run-#
+    pattern = re.compile(r"sub-([A-Z][0-9]+)_ses-([0-9]+)_task-([a-z]+)")
     if Path(args.bold_file).exists():
         setattr(args, "bold_file", Path(args.bold_file))
         match = pattern.search(args.bold_file.name)
@@ -94,9 +93,13 @@ def get_arguments():
             setattr(args, "subject", match.group(1))
             setattr(args, "session", match.group(2))
             setattr(args, "task", match.group(3))
-            setattr(args, "run", match.group(4))
         else:
             print(f"Found BOLD file, but could not determine subject & session")
+        run_match = re.search(r"_run-([0-9]+)", args.bold_file.name)
+        if run_match:
+            setattr(args, "run", run_match.group(1))
+        else:
+            print(f"  no run for {args.bold_file.name}")
     else:
         print(f"Could not find BOLD file at '{args.bold_file}'.")
         ok_to_run = False
@@ -231,8 +234,9 @@ def main(args):
     )
     for mask_dict in mask_dicts:
         ts = mask_dict['timeseries']
-        ts_file = "sub-{}_run-{}_roi-{}_hemi-{}_{}".format(
-            args.subject, args.run,
+        ts_file = "sub-{}_task-{}_{}roi-{}_hemi-{}_{}".format(
+            args.subject, args.task,
+            f"run-{args.run}_" if "run" in args else "",
             mask_dict['roi'], mask_dict['hemi'], "ts.tsv"
         )
         np.savetxt(
