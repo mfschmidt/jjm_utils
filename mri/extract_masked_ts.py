@@ -85,19 +85,28 @@ def get_arguments():
 
     # Figure out the subject, session, and task.
     # We would also like run, but need to match even for task-study w/o run-#
-    pattern = re.compile(r"sub-([A-Z][0-9]+)_ses-([0-9]+)_task-([a-z]+)")
     if Path(args.bold_file).exists():
         setattr(args, "bold_file", Path(args.bold_file))
-        match = pattern.search(args.bold_file.name)
+        match = re.compile(r"sub-([A-Z][0-9]+)").search(str(args.bold_file))
         if match:
             setattr(args, "subject", match.group(1))
-            setattr(args, "session", match.group(2))
-            setattr(args, "task", match.group(3))
         else:
-            print(f"Found BOLD file, but could not determine subject & session")
-        run_match = re.search(r"_run-([0-9]+)", args.bold_file.name)
-        if run_match:
-            setattr(args, "run", run_match.group(1))
+            setattr(args, "subject", "unknown")
+            print(f"Found BOLD, '{str(args.bold_file)}' "
+                  "but couldn't determine subject.")
+        match = re.compile(r"ses-([0-9]+)").search(str(args.bold_file))
+        if match:
+            setattr(args, "session", match.group(1))
+        else:
+            setattr(args, "session", "unknown")
+        match = re.compile(r"task-([a-z]+)").search(args.bold_file.name)
+        if match:
+            setattr(args, "task", match.group(1))
+        else:
+            setattr(args, "task", "unknown")
+        match = re.compile(r"_run-([0-9]+)").search(args.bold_file.name)
+        if match:
+            setattr(args, "run", int(match.group(1)))
         else:
             print(f"  no run for {args.bold_file.name}")
     else:
