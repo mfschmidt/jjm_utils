@@ -38,6 +38,7 @@ For more, use the help.
 
 # TODO: If no arguments, usage
 # TODO: Allow matching of mask to other resolution for later use.
+# TODO: Add aseg atlas
 
 
 class Atlas():
@@ -71,7 +72,11 @@ class Atlas():
             self.lut = Path(lut)
 
         # Use these hand-curated lists of ids available in different segs
-        if self.name == "CA":
+        if self.name == "ASEG":
+            self.labels = [
+                1,
+            ]
+        elif self.name == "CA":
             self.labels = [
                 203, 204, 205, 206, 208, 209, 211, 212, 215, 226,
             ]
@@ -206,7 +211,7 @@ def get_arguments():
                     these require that FreeSurfer7 and additional
                     subfield segmentations have been run and the
                     atlases are available in
-                    /mnt/derivatives/[project]/freesurfer7/[subject]/mri/
+                    /data/BI/human/derivatives/[project]/freesurfer7/[subject]/mri/
              """,
     )
     parser.add_argument(
@@ -272,7 +277,7 @@ def get_arguments():
             parser.print_help()
             sys.exit(1)
         else:
-            proj_path = Path(f"/mnt/derivatives/{parsed_args.project}")
+            proj_path = Path(f"/data/BI/human/derivatives/{parsed_args.project}")
             sub_path = proj_path / "freesurfer7" / f"sub-{parsed_args.subject}"
             if not sub_path.exists():
                 print(f"No freesurfer data for subject '{parsed_args.subject}'"
@@ -613,7 +618,7 @@ def main(args):
         make_filters([cortical_config, ], args)
     elif args.atlas.lower() in ["HBT".lower(), "CA".lower(), "FS60".lower(), ]:
         left_config = AtlasConfig(
-            base_path=f"/mnt/derivatives/{args.project}/freesurfer7/"
+            base_path=f"/data/BI/human/derivatives/{args.project}/freesurfer7/"
                       f"sub-{args.subject.replace('T', 'U')}/mri",
             atlas=f"lh.hippoAmygLabels-T1-T2.v21.{args.atlas}.mgz",
             labels=Atlas(args.atlas),
@@ -621,7 +626,7 @@ def main(args):
             res="high",
         )
         right_config = AtlasConfig(
-            base_path=f"/mnt/derivatives/{args.project}/freesurfer7/"
+            base_path=f"/data/BI/human/derivatives/{args.project}/freesurfer7/"
                       f"sub-{args.subject.replace('T', 'U')}/mri",
             atlas=f"rh.hippoAmygLabels-T1-T2.v21.{args.atlas}.mgz",
             labels=Atlas(args.atlas),
@@ -633,7 +638,7 @@ def main(args):
         make_filters([left_config, right_config, ], args)
     elif args.atlas.lower() in ["FS7".lower(), "AMY".lower(), ]:
         left_config = AtlasConfig(
-            base_path=f"/mnt/derivatives/{args.project}/freesurfer7/"
+            base_path=f"/data/BI/human/derivatives/{args.project}/freesurfer7/"
                       f"sub-{args.subject.replace('T', 'U')}/mri",
             atlas="lh.hippoAmygLabels-T1-T2.v21.mgz",
             labels=Atlas(args.atlas),
@@ -641,7 +646,7 @@ def main(args):
             res="high",
         )
         right_config = AtlasConfig(
-            base_path=f"/mnt/derivatives/{args.project}/freesurfer7/"
+            base_path=f"/data/BI/human/derivatives/{args.project}/freesurfer7/"
                       f"sub-{args.subject.replace('T', 'U')}/mri",
             atlas="rh.hippoAmygLabels-T1-T2.v21.mgz",
             labels=Atlas(args.atlas),
@@ -651,7 +656,7 @@ def main(args):
         make_filters([left_config, right_config, ], args)
     elif args.atlas.lower() in ["Thal".lower(), ]:
         atlas_config = AtlasConfig(
-            base_path=f"/mnt/derivatives/{args.project}/freesurfer7/"
+            base_path=f"/data/BI/human/derivatives/{args.project}/freesurfer7/"
                       f"sub-{args.subject.replace('T', 'U')}/mri",
             atlas="ThalamicNuclei.v12.T1.mgz",
             labels=Atlas(args.atlas),
