@@ -235,7 +235,6 @@ def row_as_event(row):
     assert "key_resp_img.started" in row
     assert "key_resp_img.stopped" in row
     assert "image.onset" in row
-    assert "image.dur" in row
 
     try:
         response = str(int(row["key_resp_img.keys"]))
@@ -255,7 +254,7 @@ def row_as_event(row):
     # but they should remain floats here, so they can be manipulated
     return pd.Series({
         "onset": float(row["image.onset"]),
-        "duration": float(row["image.dur"]),
+        "duration": float(row["image.stopped"]) - float(row["image.started"]),
         "trial_type": row["TypeLabel"],
         "stimulus": str(row["Stim"]).replace("stim/", ""),
         "response": response,
