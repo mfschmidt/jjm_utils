@@ -227,8 +227,12 @@ def main(args):
             trial_filter = no_filter
         else:
             trial_filter = data['trial_type'] == trial
-        for response in ['all', '3', '4', 'n/a', ]:
-            if response == 'all':
+        responses = {
+            "study": ['all', '3', '4', 'n/a', ],
+            "test": [None, ],
+        }[metadata['task']]
+        for response in responses:
+            if response in ['all', None, ]:
                 resp_filter = no_filter
             else:
                 resp_filter = data['response'] == response
@@ -257,12 +261,19 @@ def main(args):
                         # We have chosen not to write these empty files.
                         pass
                     else:
-                        filename = "_".join([
-                            f"trial-{trial}",
-                            f"response-{response.replace('/', '')}",
-                            f"sim-{sim}",
-                            f"correct-{correct.replace('/', '')}",
-                        ]) + ".txt"
+                        if metadata['task'] == "study":
+                            filename = "_".join([
+                                f"trial-{trial}",
+                                f"response-{response.replace('/', '')}",
+                                f"sim-{sim}",
+                                f"correct-{correct.replace('/', '')}",
+                            ]) + ".txt"
+                        else:
+                            filename = "_".join([
+                                f"trial-{trial}",
+                                f"sim-{sim}",
+                                f"correct-{correct.replace('/', '')}",
+                            ]) + ".txt"
                         regressors.to_csv(
                             args.output_path / filename,
                             sep='\t', index=False, header=False,
