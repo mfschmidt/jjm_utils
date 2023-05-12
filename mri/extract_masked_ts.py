@@ -75,6 +75,10 @@ def get_arguments():
         help="Specify how many TRs to trim from the beginning of each run.",
     )
     parser.add_argument(
+        "--save-correlations", action="store_true",
+        help="set to write out correlation matrices for all voxels tses",
+    )
+    parser.add_argument(
         "--verbose", action="store_true",
         help="set to trigger verbose output",
     )
@@ -252,33 +256,36 @@ def main(args):
             ts_dir / ts_file, ts, fmt="%0.5f", delimiter='\t'
         )
         if ts.shape[1] > 1:
-            # Calculate correlations between a subsample of in-mask voxels
-            sample_idx = np.random.randint(np.max([512, ts.shape[1]]), size=512)
-            corr_mat = np.corrcoef(ts[:, sample_idx], rowvar=False)
-            corr_idx = np.tril_indices(corr_mat.shape[0], k=-1)
-            corrs = corr_mat[corr_idx]
-            if args.verbose:
-                if np.sum(corrs == 1.0) > 0:
-                    z_corrs = np.concatenate((
-                        np.arctanh(corrs[corrs < 1.0]), corrs[corrs == 1.0],
-                    ))
-                else:
-                    z_corrs = np.arctanh(corrs)
-                mean_r = np.tanh(np.mean(z_corrs))
-                print(f"      {mask_dict['roi']} {mask_dict['hemi']} "
-                      f"raw mean voxel-wise r == {mean_r:0.2f}")
-            # These matrices can be gigabytes and take forever to save. Skip it.
-            np.savetxt(
-                ts_dir / ts_file.replace("ts.tsv", "r.tsv"),
-                corrs, fmt="%0.5f", delimiter='\t'
-            )
-
             # Average the voxels within the mask.
             mean_ts_file = ts_file.replace("_ts.", "_mean_ts.")
             np.savetxt(
                 ts_dir / mean_ts_file,
                 np.mean(ts, axis=1), fmt="%0.5f", delimiter='\t'
             )
+
+            if args.save_correlations:
+                # Calculate correlations between a subsample of in-mask voxels
+                sample_idx = np.random.randint(
+                    np.max([512, ts.shape[1]]), size=512
+                )
+                corr_mat = np.corrcoef(ts[:, sample_idx], rowvar=False)
+                corr_idx = np.tril_indices(corr_mat.shape[0], k=-1)
+                corrs = corr_mat[corr_idx]
+                if args.verbose:
+                    if np.sum(corrs == 1.0) > 0:
+                        z_corrs = np.concatenate((
+                            np.arctanh(corrs[corrs < 1.0]), corrs[corrs == 1.0],
+                        ))
+                    else:
+                        z_corrs = np.arctanh(corrs)
+                    mean_r = np.tanh(np.mean(z_corrs))
+                    print(f"      {mask_dict['roi']} {mask_dict['hemi']} "
+                          f"raw mean voxel-wise r == {mean_r:0.2f}")
+                # These matrices can be gigabytes and take forever to save.
+                np.savetxt(
+                    ts_dir / ts_file.replace("ts.tsv", "r.tsv"),
+                    corrs, fmt="%0.5f", delimiter='\t'
+                )
         else:
             if args.verbose:
                 print("      has one voxel, no r")
