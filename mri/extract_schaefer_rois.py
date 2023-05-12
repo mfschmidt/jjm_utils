@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# extract_schaefer_roi.py
+# extract_schaefer_rois.py
 #
 # This script will input a subject id, and combined with other options,
 # create binary masks and cropped timeseries of masked data.
