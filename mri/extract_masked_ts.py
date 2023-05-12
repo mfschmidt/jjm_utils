@@ -79,6 +79,10 @@ def get_arguments():
         help="set to write out correlation matrices for all voxels tses",
     )
     parser.add_argument(
+        "--save-all-voxels", action="store_true",
+        help="set to write out matrices with all voxels' tses per region",
+    )
+    parser.add_argument(
         "--verbose", action="store_true",
         help="set to trigger verbose output",
     )
@@ -252,9 +256,10 @@ def main(args):
             f"run-{args.run}_" if "run" in args else "",
             mask_dict['roi'], mask_dict['hemi'], "ts.tsv"
         )
-        np.savetxt(
-            ts_dir / ts_file, ts, fmt="%0.5f", delimiter='\t'
-        )
+        if args.save_all_voxels:
+            np.savetxt(
+                ts_dir / ts_file, ts, fmt="%0.5f", delimiter='\t'
+            )
         if ts.shape[1] > 1:
             # Average the voxels within the mask.
             mean_ts_file = ts_file.replace("_ts.", "_mean_ts.")
