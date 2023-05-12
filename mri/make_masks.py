@@ -4,10 +4,14 @@ import sys
 import os
 import xml.etree.ElementTree as ElementTree
 import argparse
-import errno
+# import errno
 import subprocess
 import re
 from pathlib import Path
+# import templateflow.api as tflow
+# import pandas as pd
+import numpy as np
+import nibabel as nib
 
 
 """Make region-specific binary masks from an atlas.
@@ -38,10 +42,10 @@ For more, use the help.
 
 # TODO: If no arguments, usage
 # TODO: Allow matching of mask to other resolution for later use.
-# TODO: Add aseg atlas
+# TODO: Add aseg atlas and Schaefer atlas, general purpose masker
 
 
-class Atlas():
+class Atlas:
     """ There isn't really such a thing as an atlas for hippocampal subfields.
         Each subject has their own atlas without much of a legend.
         So, here is that legend.
@@ -74,7 +78,9 @@ class Atlas():
         # Use these hand-curated lists of ids available in different segs
         if self.name == "ASEG":
             self.labels = [
-                1,
+                10, 11, 12, 13, 17, 18, 26, 27,  # left subcortical
+                49, 50, 51, 52, 53, 54, 58, 59,  # right subcortical
+                16,  # brainstem
             ]
         elif self.name == "CA":
             self.labels = [
@@ -135,13 +141,16 @@ class Atlas():
                 if match and int(match.group(1)) in self.labels:
                     atlas_map[int(match.group(1))] = {
                         "name": match.group(2),
+                        "orig": match.group(2),
+                        "long": match.group(2),
+                        "short": match.group(2).replace("-", ""),
                         "abbr": match.group(2).replace("-", ""),
                     }
 
         return atlas_map
 
 
-class AtlasConfig():
+class AtlasConfig:
     """ Metadata to specify how to utilize a particular atlas
     """
     
@@ -156,8 +165,10 @@ class AtlasConfig():
         self.spec = spec
         self.res = res
         if isinstance(labels, Atlas):
+            # FreeSurfer atlases are encoded into Atlas objects
             self.labels = labels
         else:
+            # Schaefer and FSL atlas labels are in text files.
             self.labels = self.base_path / labels
 
         # Make every effort to find the desired atlas.
@@ -207,7 +218,7 @@ def get_arguments():
                     for resolution and space availability
                 'Yeo07', 'Yeo17'
                     must be available in ./atlases/
-                'FS7', 'HBT', 'Amy', 'CA', 'FS60', 'Thal'
+                'FS7', 'HBT', 'Amy', 'CA', 'FS60', 'Thal', 'aseg'
                     these require that FreeSurfer7 and additional
                     subfield segmentations have been run and the
                     atlases are available in
@@ -230,7 +241,7 @@ def get_arguments():
     parser.add_argument(
         "--space", default="MNI152NLin2009cAsym",
         help="""The MNI space to use
-                MNI152NLin2009cAsym for fMRIPrep v2.20,
+                MNI152NLin2009cAsym for fMRIPrep v20.2,
                 MNI152NLin6Sym for FSL and ABCD""",
     )
     parser.add_argument(
@@ -239,12 +250,12 @@ def get_arguments():
                 The contrast map should be binary, 1 to keep, 0 to exclude""",
     )
     parser.add_argument(
-        "--labels", default="long",
+        "--labels", default="abbr",
         help="""Which label style to use for individual mask file names:
                 'original' keeps the name from the atlas label xml
                 'long' keeps the original name, but formats it without spaces
                 'short' strips special characters from the original name
-                'abbr' abbreviates the original name""",
+                'abbr' (default) abbreviates the original name""",
     )
     parser.add_argument(
         "--atlas-threshold", default="0",
@@ -269,7 +280,7 @@ def get_arguments():
     # If a subject-specific atlas is requested, ensure it exists.
     subjectives = [
         a.lower()
-        for a in ["AMY", "FS7", "HBT", "CA", "FS60", "BS", "Thal", ]
+        for a in ["AMY", "FS7", "HBT", "CA", "FS60", "BS", "Thal", "aseg", ]
     ]
     if parsed_args.atlas.lower() in subjectives:
         if parsed_args.subject == "":
@@ -277,7 +288,8 @@ def get_arguments():
             parser.print_help()
             sys.exit(1)
         else:
-            proj_path = Path(f"/data/BI/human/derivatives/{parsed_args.project}")
+            derivatives_path = Path("/data/BI/human/derivatives")
+            proj_path = derivatives_path / parsed_args.project
             sub_path = proj_path / "freesurfer7" / f"sub-{parsed_args.subject}"
             if not sub_path.exists():
                 print(f"No freesurfer data for subject '{parsed_args.subject}'"
@@ -292,6 +304,54 @@ def get_arguments():
 def abbreviate_label(label):
     """ Return an abbreviation for a given label. """
 
+    schaefer_regions = {  # Not used yet, for later when Schaefer is added
+        "AntTemp": "anterior temporal",
+        "Aud": "auditory",
+        "Cent": "central",
+        "Cinga": "cingulate anterior",
+        "Cingm": "mid-cingulate",
+        "Cingp": "cingulate posterior",
+        "ExStr": "extrastriate cortex",
+        "ExStrInf": "extra-striate inferior",
+        "ExStrSup": "extra-striate superior",
+        "FEF": "frontal eye fields",
+        "FPole": "frontal pole",
+        "FrMed": "frontal medial",
+        "FrOper": "frontal operculum",
+        "IFG": "inferior frontal gyrus",
+        "Ins": "insula",
+        "IPL": "inferior parietal lobule",
+        "IPS": "intraparietal sulcus",
+        "OFC": "orbital frontal cortex",
+        "ParMed": "parietal medial",
+        "ParOcc": "parietal occipital",
+        "ParOper": "parietal operculum",
+        "pCun": "precuneus",
+        "pCunPCC": "precuneus posterior cingulate cortex",
+        "PFCd": "dorsal prefrontal cortex",
+        "PFCl": "lateral prefrontal cortex",
+        "PFCld": "lateral dorsal prefrontal cortex",
+        "PFClv": "lateral ventral prefrontal cortex",
+        "PFCm": "medial prefrontal cortex",
+        "PFCmp": "medial posterior prefrontal cortex",
+        "PFCv": "ventral prefrontal cortex",
+        "PHC": "parahippocampal cortex",
+        "PostC": "post central",
+        "PrC": "precentral",
+        "PrCd": "precentral dorsal",
+        "PrCv": "precentral ventral",
+        "RSC": "retrosplenial cortex",
+        "Rsp": "retrosplenial",
+        "S2": "S2",
+        "SPL": "superior parietal lobule",
+        "ST": "superior temporal",
+        "Striate": "striate cortex",
+        "StriCal": "striate calcarine",
+        "Temp": "temporal",
+        "TempOcc": "temporal occipital",
+        "TempPar": "temporal parietal",
+        "TempPole": "temporal pole",
+    }
     return {
         "Visual": "VIS",
         "Visual 1": "VIS1",
@@ -389,6 +449,95 @@ def abbreviate_label(label):
     }.get(label, label)
 
 
+# def get_schaefer_toc(space="MNI152NLin2009cAsym"):
+#     """ Load the table of contents to the Schaefer atlas. """
+#
+#     toc_path = tflow.get(
+#         space, atlas="Schaefer2018",
+#         desc="1000Parcels17Networks", suffix="dseg", extension="tsv"
+#     )
+#     if isinstance(toc_path, list) and len(toc_path) > 0:
+#         data = pd.read_csv(toc_path[0], sep='\t')
+#     elif isinstance(toc_path, Path):
+#         data = pd.read_csv(toc_path, sep='\t')
+#     else:
+#         raise FileNotFoundError(f"WTF is a {type(toc_path)}")
+#
+#     return data
+
+
+# def get_schaefer_atlas(space="MNI152NLin2009cAsym"):
+#     """ Load the actual Schaefer atlas. """
+#
+#     atlas_path = tflow.get(
+#         space, atlas="Schaefer2018",
+#         desc="1000Parcels17Networks", suffix="dseg", resolution=1,
+#         extension="nii.gz"
+#     )
+#     if isinstance(atlas_path, list) and len(atlas_path) > 0:
+#         data = nib.load(atlas_path[0])
+#     elif isinstance(atlas_path, Path):
+#         data = nib.load(atlas_path)
+#     else:
+#         raise FileNotFoundError(f"WTF is a {type(atlas_path)}")
+#
+#     return data
+
+
+def mask_from_indices(atlas, indices, region, verbose=False):
+    """ Generate binary mask including all indices specified. """
+
+    mask = np.zeros(atlas.shape, dtype=np.uint8)
+    for idx in indices:
+        # if verbose:
+        #     print(f"Parcel {idx}: "
+        #           f"{np.sum(atlas.get_fdata() == idx):,} voxels.")
+        mask[atlas.get_fdata() == idx] = 1
+    if verbose:
+        print(f"  total for {region}: "
+              f"{np.sum(mask):,} voxels across {len(indices)} parcels")
+    return nib.Nifti1Image(mask, affine=atlas.affine)
+
+
+# def build_mask_images(schaefer_atlas, schaefer_toc, verbose=False):
+#     """ Create 3 images: left, right, and bilateral versions of the ROI """
+#
+#     lh_filter = schaefer_toc['name'].apply(
+#         lambda name: "_lh_" in name.lower()
+#     )
+#     rh_filter = schaefer_toc['name'].apply(
+#         lambda name: "_rh_" in name.lower()
+#     )
+#     # TODO: Pick some region names; they are not specified at cmdline.
+#     masks = {}
+#     for roi in args.region_names:
+#         roi_filter = schaefer_toc['name'].apply(
+#             lambda name: f"_{roi.lower()}_" in name.lower()
+#         )
+#         print(f"{roi_filter.sum()} of {len(roi_filter)} parcels "
+#               f"from region {roi}")
+#         print(f"{lh_filter.sum()} of {len(lh_filter)} parcels from left, "
+#               f"{(lh_filter & roi_filter).sum()} in {roi}")
+#         print(f"{rh_filter.sum()} of {len(rh_filter)} parcels from right, "
+#               f"{(rh_filter & roi_filter).sum()} in {roi}")
+#
+#         masks[roi] = {}
+#         masks[roi]['lh'] = mask_from_indices(
+#             schaefer_atlas, schaefer_toc[roi_filter & lh_filter]['index'],
+#             f"{roi}_lh", verbose=verbose
+#         )
+#         masks[roi]['rh'] = mask_from_indices(
+#             schaefer_atlas, schaefer_toc[roi_filter & rh_filter]['index'],
+#             f"{roi}_rh", verbose=verbose
+#         )
+#         masks[roi]['bi'] = mask_from_indices(
+#             schaefer_atlas, schaefer_toc[roi_filter]['index'],
+#             f"{roi}_bi", verbose=verbose
+#         )
+#
+#     return masks
+
+
 def get_fsl_labels(label_file):
     """ Return label dictionary from xml file provided. """
 
@@ -425,7 +574,9 @@ def get_fsl_labels(label_file):
     return labels
 
 
-def make_binary_mask(config, label, output_file, tool="freesurfer", verbose=False):
+def make_binary_mask(
+        config, label, output_file, tool="freesurfer", verbose=False
+):
     """ Just execute the fsl command to extract one ROI mask.
     """
     
@@ -433,7 +584,8 @@ def make_binary_mask(config, label, output_file, tool="freesurfer", verbose=Fals
 
     if tool == "fsl":
         # We can do this the FSL way by extracting the label, then writing it.
-        exe = Path(os.environ.get("FSLDIR", "/usr/local/fsl")) / "bin" / "fslmaths"
+        fsl_dir = Path(os.environ.get("FSLDIR", "/usr/local/fsl"))
+        exe = fsl_dir / "bin" / "fslmaths"
         fsl_extract_command = [
             str(exe.resolve()),
             str(config.atlas),
@@ -506,11 +658,16 @@ def make_filters(configs, args):
         print(f"Extracting masks from {cfg.name} atlas...")
         if isinstance(cfg.labels, Atlas):
             labels = cfg.labels.map
-        else:
+        elif str(cfg.labels).endswith(".xml"):
             labels = get_fsl_labels(cfg.labels)
+        else:
+            labels = {}
+        if args.verbose:
+            print(f"Extracting {args.labels} version of {len(labels)} labels.")
+
         for num, label in labels.items():
 
-            print(f"#{num}. {label.get('abbr')}")
+            print(f"  #{num}. {label.get('abbr')}")
             if args.verbose:
                 print(f"  building {cfg.name} {label.get('abbr')} "
                       f"in {args.output_dir} for subject {args.subject}.")
@@ -522,14 +679,20 @@ def make_filters(configs, args):
                 out_file = f"{label.get(args.labels)}.nii.gz"
             else:
                 out_file = f"res-{cfg.res}_{atlas_label}_mask{cfg.spec}.nii.gz"
-            make_binary_mask(cfg, num, Path(args.output_dir) / out_file, args.verbose)
-            
+            make_binary_mask(
+                cfg, num, Path(args.output_dir) / out_file, args.verbose
+            )
+            if args.verbose:
+                print(f"  built {out_file}.")
+
             # Only in some cases should we overwrite it with a threshold map.
             if args.contrast_map != "":
                 combine_masks(
                     Path(args.output_dir) / out_file, args.contrast_map,
                     verbose=args.verbose
                 )
+                if args.verbose:
+                    print(f"  combined {out_file} with {args.contrast_map}.")
 
 
 def print_proc_if_needed(proc, verbose=False):
@@ -607,6 +770,31 @@ def main(args):
             res="yeo",
         )
         make_filters([cortical_config, ], args)
+    elif args.atlas.lower() == "Schaefer".lower():
+        print("Schaefer atlases are not yet supported.")
+        # schaefer_toc = get_schaefer_toc(space=args.space)
+        # schaefer_atlas = get_schaefer_atlas(space=args.space)
+        # masks = build_mask_images(schaefer_atlas, schaefer_toc, args.verbose)
+        # tpl_files = tflow.get(
+        #     template=args.space,
+        #     atlas="Schaefer2018",
+        #     desc="1000Parcels17Networks",
+        #     suffix="dseg"
+        # )
+        # if len(tpl_files) > 1:
+        #     tpl_lbl_file = [_ for _ in tpl_files if str(_).endswith(".tsv")][0]
+        #     tpl_atl_files = [_ for _ in tpl_files if str(_).endswith(".nii.gz")]
+        #     tpl_atl_file = [_ for _ in tpl_atl_files if "res-01" in str(_)][0]
+        #     highest_config = AtlasConfig(
+        #         base_path=tpl_atl_file.parent,
+        #         atlas=tpl_atl_file.name,
+        #         labels=tpl_lbl_file.name,
+        #         spec=".MNI",
+        #         res="high",
+        #     )
+        #     make_filters([highest_config, ], args)
+        # else:
+        #     print("ERROR: Failed to find Schaefer Atlas")
     elif args.atlas.lower() == "Yeo07".lower():
         cortical_config = AtlasConfig(
             base_path=Path(".") / "atlases",
@@ -664,14 +852,24 @@ def main(args):
             res="high",
         )
         make_filters([atlas_config, ], args)
+    elif args.atlas.lower() in ["aseg".lower(), ]:
+        atlas_config = AtlasConfig(
+            base_path=f"/data/BI/human/derivatives/{args.project}/freesurfer7/"
+                      f"sub-{args.subject.replace('T', 'U')}/mri",
+            atlas="aseg.mgz",
+            labels=Atlas(args.atlas),
+            spec=".T1",
+            res="high",
+        )
+        make_filters([atlas_config, ], args)
     else:
-        print("Only HarvardOxford, Yeo, "
-              "and FreeSurfer hippocampal subfields "
+        print("Only HarvardOxford and Yeo atlases, "
+              "and FreeSurfer volumetric segmentations "
               "are currently supported.")
         print("Only 'T1w' and two standard spaces are currently supported:")
         print("  - MNI152NLin2009cAsym: (97, 115, 97)")
         print("  - MNI152NLin6Sym: (91, 109, 91)")
-        print(f"Your choice, '{args.space}', is not recognized.")
+        print(f"Your choice, '{args.atlas} x {args.space}', is not recognized.")
         sys.exit(1)
 
 
