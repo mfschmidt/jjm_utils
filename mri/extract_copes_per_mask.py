@@ -200,7 +200,7 @@ def main(args):
 
     # What feat run are we dealing with? Different levels, different patterns.
     is_high_level = False
-    feat_id = args.featpath.resolve().parent.name.split('.')[0]
+    feat_id = args.featpath.resolve().name.split('.')[0]
     if ".gfeat" in str(args.featpath.resolve()):
         is_high_level = True
         pattern = re.compile(r"/([^/]+).gfeat")
