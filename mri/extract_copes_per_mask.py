@@ -144,7 +144,7 @@ def extract_voxels_by_label(data, mask, label):
     """
 
     if data.shape != mask.shape:
-        raise ValueError("Data {data.shape} and mask {mask.shape} don't match")
+        raise ValueError(f"Data {data.shape} and mask {mask.shape} don't match")
 
     voxels = []
     dims = data.shape
@@ -166,7 +166,7 @@ def extract_voxels_by_threshold(data, mask, threshold):
     """
 
     if data.shape != mask.shape:
-        raise ValueError("Data {data.shape} and mask {mask.shape} don't match")
+        raise ValueError(f"Data {data.shape} and mask {mask.shape} don't match")
 
     voxels = []
     dims = data.shape
