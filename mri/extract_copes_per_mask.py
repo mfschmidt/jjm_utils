@@ -57,7 +57,7 @@ def get_arguments():
         print(f"Path '{args.featpath}' does not exist.")
         sys.exit(1)
 
-    if hasattr(args, "mask_path"):
+    if hasattr(args, "mask_path") and args.mask_path is not None:
         setattr(args, "mask_path",
                 Path(args.mask_path).resolve())
     else:
@@ -245,7 +245,7 @@ def main(args):
     for cope in copes:
         voxelwise_dataframes = []
         cope_img = nib.load(str(cope.resolve()))
-        cope_name = cope.name
+        cope_name = cope.name.replace(".nii.gz", "")
         if is_high_level:
             # High level gfeat runs call every file cope1.feat, be more specific.
             cope_name = cope.parent.parent.name.replace(".feat", "")
