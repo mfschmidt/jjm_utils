@@ -122,16 +122,23 @@ def get_arguments():
         ok_to_run = False
 
     # Use Path objects rather than strings, and make sure they exist.
-    pattern = re.compile(r"_roi-([A-Za-z0-9]+)_([a-z]+)\.")
+    patterns = [
+        re.compile(r"_roi-([A-Za-z]+)_([a-z]+)\."),
+        re.compile(r"res-bold_hbt_HP_([A-Za-z]+)_mask\.T1\.([a-z]+)\.nii\.gz"),
+        re.compile(r"res-bold_aseg_([A-Za-z]+)_mask\.T1\.nii\.gz"),
+    ]
     masks = {}
     for mask_file in [Path(_) for _ in args.mask_files]:
         if mask_file.exists():
             print(f"Mask path '{str(mask_file)}' exists.")
-            match = pattern.search(mask_file.name)
-            if match:
-                masks[f"{match.group(1)}_{match.group(2)}"] = nib.load(
-                    mask_file
-                )
+            for pattern in patterns:
+                match = pattern.search(mask_file.name)
+                if match:
+                    if len(match.groups()) == 1:
+                        roi, lat = match.group(1), "bi"
+                    else:
+                        roi, lat = match.group(1), match.group(2)
+                    masks[f"{roi}_{lat}"] = nib.load(mask_file)
         else:
             print(f"{err}Ignoring mask '{str(mask_file)}'; does not exist.")
     if len(masks.keys()) > 0:
