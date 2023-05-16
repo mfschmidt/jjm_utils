@@ -181,11 +181,13 @@ def get_arguments():
         if Path(args.atlas).exists():
             setattr(args, "atlas_file", Path(args.atlas))
             setattr(args, "atlas_image", nib.load(args.atlas_file))
+
             # Our space-T1w atlas also has tpl-MNI152..., so
             # prefer getting space from 'space' key,
             # but if 'space' is not a key, 'tpl' is plan B.
-            space_match = re.search(r"space-([A-Za-z0-9]+)_",
-                                    args.atlas_file.name)
+            space_match = re.search(
+                r"space-([A-Za-z0-9]+)_", args.atlas_file.name
+            )
             if space_match:
                 setattr(args, "atlas_space", space_match.group(1))
             else:
@@ -195,6 +197,14 @@ def get_arguments():
                     setattr(args, "atlas_space", tpl_match.group(1))
                 else:
                     setattr(args, "atlas_space", "unknown")
+
+            # Also determine resolution
+            res_match = re.search(r"res-([a-z0-9]+)_", args.atlas_file.name)
+            if res_match:
+                setattr(args, "atlas_res", res_match.group(1))
+            else:
+                setattr(args, "atlas_res", "unknown")
+
         else:
             print(f"{err}Path to atlas, '{args.atlas}' does not exist.")
             ok_to_run = False
@@ -302,10 +312,12 @@ def main(args):
     masks = build_mask_images(args)
     mask_dir = args.subject_dir / "masks"
     mask_dir.mkdir(parents=True, exist_ok=True)
-    mask_file_template = "schaefer2018_space-{}_res-1_roi-{}_{}.nii.gz"
+    mask_file_template = "schaefer2018_space-{}_res-{}_roi-{}_{}.nii.gz"
     for roi in sorted(masks.keys()):
         for lat in masks[roi].keys():
-            filename = mask_file_template.format(args.atlas_space, roi, lat)
+            filename = mask_file_template.format(
+                args.atlas_space, args.atlas_res, roi, lat
+            )
             nib.save(masks[roi][lat], mask_dir / filename)
 
     with open(args.subject_dir / "last_run.txt", "w") as f:
