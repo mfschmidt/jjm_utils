@@ -64,7 +64,16 @@ def main(args):
             run = match.group(3)
             roi = match.group(4)
             hemi = match.group(5)
-        else:
+        pattern = re.compile(
+            r"sub-([A-Z][0-9]+)_task-([a-z]+)_roi-([A-Za-z]+)_hemi-([a-z]+)_mean_ts.tsv"
+        )
+        match = pattern.match(ts_file.name)
+        if match:
+            subject_id = match.group(1)
+            task = match.group(2)
+            roi = match.group(3)
+            hemi = match.group(4)
+        if subject_id == "NA":
             print("Could not determine region from regex of filename.")
         ts_data = pd.read_csv(ts_file, index_col=False, header=None)
         for i, bold_value in enumerate(ts_data.values):
