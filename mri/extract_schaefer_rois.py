@@ -185,8 +185,9 @@ def get_arguments():
             # Our space-T1w atlas also has tpl-MNI152..., so
             # prefer getting space from 'space' key,
             # but if 'space' is not a key, 'tpl' is plan B.
-            space_match = re.search(r"space-([A-Za-z0-9]+)_",
-                                    args.atlas_file.name)
+            space_match = re.search(
+                r"space-([A-Za-z0-9]+)_", args.atlas_file.name
+            )
             if space_match:
                 setattr(args, "atlas_space", space_match.group(1))
             else:
@@ -315,7 +316,7 @@ def main(args):
     for roi in sorted(masks.keys()):
         for lat in masks[roi].keys():
             filename = mask_file_template.format(
-                args.atlas_space, args.res, roi, lat
+                args.atlas_space, args.atlas_res, roi, lat
             )
             nib.save(masks[roi][lat], mask_dir / filename)
 
