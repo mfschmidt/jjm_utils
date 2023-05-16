@@ -71,6 +71,10 @@ def get_arguments():
         help="Specify full-width half-maximum of smoothing kernel.",
     )
     parser.add_argument(
+        "--prob-threshold", type=float, default=0.50,
+        help="Specify threshold if mask is probabilistic.",
+    )
+    parser.add_argument(
         "--trim-first-trs", "--trim_first_trs", type=int, default=0,
         help="Specify how many TRs to trim from the beginning of each run.",
     )
@@ -121,24 +125,46 @@ def get_arguments():
         print(f"Could not find BOLD file at '{args.bold_file}'.")
         ok_to_run = False
 
-    # Use Path objects rather than strings, and make sure they exist.
+    # Establish mask file names to match
     patterns = [
         re.compile(r"_roi-([A-Za-z]+)_([a-z]+)\."),
         re.compile(r"res-bold_hbt_HP_([A-Za-z]+)_mask\.T1\.([a-z]+)\.nii\.gz"),
         re.compile(r"res-bold_aseg_([A-Za-z]+)_mask\.T1\.nii\.gz"),
     ]
     masks = {}
+    # Use Path objects rather than strings, and make sure they exist.
     for mask_file in [Path(_) for _ in args.mask_files]:
         if mask_file.exists():
             print(f"Mask path '{str(mask_file)}' exists.")
-            for pattern in patterns:
+            mask_img = nib.load(mask_file)
+            # If the mask is probabilistic, make it binary.
+            lbls, ns = np.unique(mask_img.get_fdata(), return_counts=True)
+            if len(lbls) > 2:
+                bin_mask = np.zeros(mask_img.shape)
+                bin_mask[mask_img.get_fdata() > args.prob_threshold] = 1
+                mask_img = nib.Nifti1Image(
+                    bin_mask, mask_img.affine, dtype=np.uint16,
+                )
+            for pattern in patterns:  # only one should match
                 match = pattern.search(mask_file.name)
                 if match:
+                    print(f"{str(mask_file.name)} matched")
                     if len(match.groups()) == 1:
-                        roi, lat = match.group(1), "bi"
+                        if "Right" in mask_file.name:
+                            roi, lat = match.group(1), "rh"
+                        elif "Left" in mask_file.name:
+                            roi, lat = match.group(1), "lh"
+                        else:
+                            roi, lat = match.group(1), "bi"
                     else:
                         roi, lat = match.group(1), match.group(2)
-                    masks[f"{roi}_{lat}"] = nib.load(mask_file)
+                    print(f"Key is '{roi}_{lat}'")
+
+                    # Store the final binary mask
+                    print(f"Storing mask {roi}_{lat}")
+                    masks[f"{roi}_{lat}"] = mask_img
+                else:
+                    pass
         else:
             print(f"{err}Ignoring mask '{str(mask_file)}'; does not exist.")
     if len(masks.keys()) > 0:
