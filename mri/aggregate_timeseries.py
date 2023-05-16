@@ -71,7 +71,7 @@ def main(args):
             bold_values.append({
                 "subject": subject_id,
                 "task": task,
-                "run": int(run),
+                "run": run,
                 "roi": roi,
                 "hemi": hemi,
                 "orig_tr": i + 1,
