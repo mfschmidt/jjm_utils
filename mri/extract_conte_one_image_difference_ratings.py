@@ -83,6 +83,9 @@ def validate_args(args):
             f"ERR: The output path '{str(args.output_path)}' doesn't exist."
         )
 
+    if args.exclude is None:
+        setattr(args, "exclude", [])
+
     if len(errors) > 0:
         for error in errors:
             print(error)
