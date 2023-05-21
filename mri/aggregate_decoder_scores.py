@@ -39,10 +39,6 @@ def get_arguments():
         help="Threshold for motion (FD in mm) to consider volume a spike"
     )
     parser.add_argument(
-        "--zero-point", default="instruct", type=str,
-        help="Is the stimulus of interest 'instruct' or 'memory'?"
-    )
-    parser.add_argument(
         "--tr-dim", default=0.9, type=float,
         help="How many seconds in the 4th dimension from one volume to the next"
     )
