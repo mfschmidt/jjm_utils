@@ -8,6 +8,7 @@ import re
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from datetime import datetime
 
 
 def get_arguments():
@@ -46,6 +47,14 @@ def get_arguments():
         help="How many seconds in the 4th dimension from one volume to the next"
     )
     parser.add_argument(
+        "--hrf-shift", default=5.4, type=float,
+        help="How many seconds to shift from event to HRF response"
+    )
+    parser.add_argument(
+        "--demographics-file", default="./demographics.csv",
+        help="File containing diagnoses, ages, etc"
+    )
+    parser.add_argument(
         "--verbose", action="store_true",
         help="set to trigger verbose output",
     )
@@ -71,6 +80,9 @@ def get_arguments():
     setattr(args, "output_file", Path(args.output_file).absolute())
     setattr(args, "fmriprep_path", Path(args.fmriprep_path).absolute())
 
+    # We are only using this on mem tasks, and we can update this if needed.
+    setattr(args, "task", "mem")
+
     return args
 
 
@@ -84,30 +96,32 @@ def get_val_from_key(filename, key):
     return None
 
 
-def get_fd(subject, task, run, args):
-    """ From the score filepath, find the confounds file and extract FD.
+def get_fd(subject, run, args):
+    """ Find the uncropped confounds file and extract cropped FD.
     """
 
     confound_files = list((args.fmriprep_path / f"sub-{subject}").glob(
-        f"**/sub-{subject}*task-{task}_run-{run}_desc-confounds_timeseries.tsv"
+        f"**/sub-{subject}*task-{args.task}_run-{run}_"
+        "desc-confounds_timeseries.tsv"
     ))
     if len(confound_files) > 0:
         df = pd.read_csv(confound_files[0], index_col=None, sep='\t')
         fd = df['framewise_displacement'][args.steady_state_outliers:]
         return fd.max(), len(fd[fd > args.motion_threshold])
     else:
-        print(f"Confound file for {subject}/{task}/{run} could not be found.")
+        print(f"Confounds for {subject}/{args.task}/{run} could not be found.")
         return None, None
 
 
 def get_run_events(run_dir, args):
-    """ From the score filepath, find the events file return its data.
+    """ Find the uncropped events file and return its cropped/shifted data.
     """
 
     time_shift = args.tr_dim * args.steady_state_outliers
     # There should be one and only one events file per run, so assume it's so
     for ev_file in run_dir.glob("regressors/sub-*_task-*_run-*_events.tsv"):
         if ev_file.exists():
+            print(f"Reading {ev_file.name}")
             df = pd.read_csv(ev_file, index_col=None, header=0, sep="\t")
             df = df.sort_values('onset')
             df['onset'] = df['onset'] - time_shift
@@ -115,51 +129,27 @@ def get_run_events(run_dir, args):
     return None
 
 
-def get_valence(subject, task, run, args, instruct, period):
-    """ From the score filepath, find the events file and extract valence.
-    """
-
-    how_badly, how_vivid = None, None
-
-    run_dir = args.input_dir / f"sub-{subject}" / f"task-{task}" / f"run-{run}"
-    df = get_run_events(run_dir, args)
-    if df is not None:
-        onsets = df[
-            (df['trial_type'] == 'instruct') & (df['stimulus'] == instruct)
-        ]['onset']
-        block_start = onsets.iloc[int(period) - 1]
-        questions = df[
-            (df['onset'] > block_start) &
-            (df['onset'] < (block_start + 30)) &
-            (df['trial_type'] == 'question')
-        ]
-        how_badly = questions[
-            questions['stimulus'] == "How badly do you feel?"
-        ]['response'].iloc[0]
-        how_vivid = questions[
-            questions['stimulus'] == "How vivid was the memory?"
-        ]['response'].iloc[0]
-    else:
-        print(f"Could not find events file")
-
-    return (
-        "nan" if np.isnan(how_badly) else str(int(how_badly)),
-        "nan" if np.isnan(how_vivid) else str(int(how_vivid)),
-    )
-
-
 def get_block_metadata(data, start_time, end_time):
     """ Get characteristics of this block from events data.
     """
 
     df = data[(data['onset'] > start_time) & (data['onset'] < end_time)]
-    memory = df[df['trial_type'] == 'memory']['stimulus'].iloc[0]
-    instruction = df[df['trial_type'] == 'instruct']['stimulus'].iloc[0]
-    feel_bad = df[df['stimulus'] == 'How badly do you feel?']['response'].iloc[0]
-    vividness = df[df['stimulus'] == 'How vivid was the memory?']['response'].iloc[0]
+    memory = df[
+        df['trial_type'] == 'memory'
+    ]['stimulus'].iloc[0]
+    instruction = df[
+        df['trial_type'] == 'instruct'
+    ]['stimulus'].iloc[0]
+    feel_bad = df[
+        df['stimulus'] == 'How badly do you feel?'
+    ]['response'].iloc[0]
+    vividness = df[
+        df['stimulus'] == 'How vivid was the memory?'
+    ]['response'].iloc[0]
 
     # Retrieve the actual timing bookends for this memory+instruct block
-    block_start = float(df[df['trial_type'] == 'memory']['onset'])
+    memory_onset = float(df[df['trial_type'] == 'memory']['onset'])
+    memory_duration = float(df[df['trial_type'] == 'memory']['duration'])
     instruct_onset = float(df[df['trial_type'] == 'instruct']['onset'])
     instruct_duration = float(df[df['trial_type'] == 'instruct']['duration'])
     block_end = instruct_onset + instruct_duration
@@ -169,7 +159,8 @@ def get_block_metadata(data, start_time, end_time):
         "instruct": instruction,
         "feel_bad": feel_bad,
         "vividness": vividness,
-        "block_start": block_start,
+        "memory_onset": memory_onset,
+        "memory_duration": memory_duration,
         "instruct_onset": instruct_onset,
         "block_end": block_end
     }
@@ -198,106 +189,162 @@ def get_decoder_name(filename):
     return decoder, weighted
 
 
+def get_subject_data(subject_id, demographics):
+    """ Return a dict with subject-level data.
+    """
+
+    return {
+        "subject": subject_id,
+        "age": demographics.get('age', "na"),
+        "sex": demographics.get('sex', "na"),
+        "suicidality": demographics.get('suicidality', "na"),
+        "race_n": demographics.get('race_n', "na"),
+        "race_dich": demographics.get('race_dich', "na"),
+        "ethnicity": demographics.get('ethnicity', "na"),
+    }
+
+
+def get_scores_from_score_file(
+        score_file, timing_data, max_fd, num_fd_outliers, subject, run, args
+):
+    """ Read scores, and organize them alongside other information.
+    """
+
+    run_blocks, run_scores = {}, {}
+
+    # Read the scores and start sorting them out.
+    print(f"Reading {score_file.name}")
+    data = pd.read_csv(score_file, index_col=None, header=None)
+    # And drop all but the four 'memory' events
+    memories = timing_data[timing_data['trial_type'] == 'memory']
+    memories = memories.reset_index()
+    for idx, memory in memories.iterrows():
+        # Extract only timepoints in this block (ignoring other 3)
+        # the 40s gets past the memory/instruct without hitting the next block.
+        block_metadata = get_block_metadata(
+            timing_data, memory.onset - 0.01, memory.onset + 40.0
+        )
+        # We use a 6 TR (5.4s) shift to account for HRF (unless overridden).
+        # We previously used 4 to start but just 2 at the end, based on the
+        # prior matlab decoder, but it was written for 2s TRs, not
+        # 0.9s.
+        #
+        # Example (cropping done when file was loaded, not here):
+        #   for a block with events       memory @ 100.0s and instruct @ 112.0s:
+        #   cropping 7 0.9s TRs shifts to memory @  93.7s and instruct @ 105.7s
+        #   hrf-shifting by 6s            memory @  99.1s and instruct @ 111.1s
+        #   'floor'ing to the current TR  memory @ TR#110 and instruct @ TR#127
+        #                                           99.0s                110.7s
+        #
+        memory_idx = int(np.floor(
+            (block_metadata['memory_onset'] + args.hrf_shift) / args.tr_dim
+        ))
+        instruct_idx = int(np.floor(
+            (block_metadata['instruct_onset'] + args.hrf_shift) / args.tr_dim
+        ))
+        end_idx = int(np.ceil(
+            (block_metadata['block_end'] + args.hrf_shift) / args.tr_dim
+        ))
+        if args.verbose:
+            print(
+                f"Start @ TR {memory_idx:>3} "
+                f"(floor(({block_metadata['memory_onset']:6.2f}s "
+                f"+ {args.hrf_shift}s) / {args.tr_dim:0.1f}s/tr)), "
+                f"instruct @ TR {instruct_idx:>3} "
+                f"(floor(({block_metadata['instruct_onset']:6.2f} "
+                f"+ {args.hrf_shift}s) / {args.tr_dim:0.1f})), "
+                f"end @ TR {end_idx:>3}  "
+                f"(ceil(({block_metadata['block_end']:6.2f} "
+                f"+ {args.hrf_shift}s) / {args.tr_dim:0.1f}))."
+            )
+
+        block_id = (subject, run, idx)
+        if block_id in run_blocks.keys():
+            print(f"Duplicate block {block_id}!")
+        else:
+            # Store block metadata, scores coming separately
+            run_blocks[block_id] = {
+                "task": args.task,
+                "run": run,
+                "instruct": block_metadata['instruct'],
+                "period": idx,
+                "orig_start_tr": memory_idx + args.steady_state_outliers,
+                "memory_tr": memory_idx,  # Final, in ss-cropped reference
+                "instruct_tr": instruct_idx,  # Final, in ss-cropped reference
+                "max_fd": max_fd,
+                "fd_outliers": num_fd_outliers,
+                "feel_bad": block_metadata['feel_bad'],
+                "vividness": block_metadata['vividness'],
+            }
+            run_scores[block_id] = {}
+
+        # Each decoder gets its own score data per TR.
+        dec_name, dec_weighted = get_decoder_name(score_file.name)
+        if dec_name not in run_scores[block_id].keys():
+            run_scores[block_id][dec_name] = {}
+        run_scores[block_id][dec_name][dec_weighted] = {}
+        block_scores = data.iloc[memory_idx:end_idx, :].values
+
+        for tr, score in enumerate(block_scores.ravel()):
+            # Save scores as (tr == 0 at memory cue), tr: score
+            run_scores[block_id][dec_name][dec_weighted][tr] = score
+        print(
+            f"  retrieved {len(block_scores.ravel())} "
+            f"{dec_name}-{dec_weighted} scores - "
+            f"{subject}.{run}.{idx} ({block_metadata['instruct']})"
+        )
+
+    return run_blocks, run_scores
+
+
 def main(args):
     """ Entry point """
 
+    dt1 = datetime.now().strftime("%Y%m%d %H:%M:%S")
     if args.verbose:
-        print(f"Searching {str(args.input_dir)} for score results.")
+        print(f"Searching {str(args.input_dir)} for score results ({dt1}).")
 
     # Load one demographic table for all lookups
-    demographics = pd.read_csv(args.input_dir / "demographics.csv", index_col=0)
+    if Path(args.demographics_file).exists():
+        print(f"Reading {Path(args.demographics_file).name}")
+        demographics = pd.read_csv(Path(args.demographics_file), index_col=0)
+    else:
+        # An empty dataframe will allow us to continue, ignoring missing info
+        demographics = pd.DataFrame()
 
     # Scrape data from all files, categorizing it in memory.
     blocks = {}
     scores = {}
-    for subject_dir in args.input_dir.glob("sub-U*"):
+    for subject_dir in sorted(args.input_dir.glob("sub-U*")):
         subject = get_val_from_key(subject_dir.name, "sub")
-        subject_demographics = demographics.loc[subject]
-        task = "mem"
-        for run_dir in subject_dir.glob(f"task-{task}/run-*"):
+        if subject in demographics.index:
+            subject_dict = get_subject_data(
+                subject, demographics.loc[subject]
+            )
+        else:
+            subject_dict = get_subject_data(
+                subject, pd.Series(dtype=str)
+            )
+        for run_dir in sorted(subject_dir.glob(f"task-{args.task}/run-*")):
             run = get_val_from_key(run_dir.name, "run")
             print(f"Mining sub-{subject} run-{run} ... ", end='')
-            max_fd, num_fd_outliers = get_fd(subject, task, run, args)
+            # Get steady-state cropped events times
             timing_data = get_run_events(run_dir, args)
+            # Get steady-state cropped movement confounds
+            max_fd, num_fd_outliers = get_fd(subject, run, args)
             print(f"max FD {max_fd:0.2f} with {num_fd_outliers:0d} outlier TRs")
+
             for score_file in run_dir.glob("decoding/all_trs_*_scores.tsv"):
 
                 # Store metadata only once per subject/run/instruction/period.
-                data = pd.read_csv(score_file, index_col=None, header=None)
-                memories = timing_data[timing_data['trial_type'] == 'memory']
-                memories = memories.reset_index()
-                for idx, memory in memories.iterrows():
-                    # Extract only timepoints in this block (ignoring other 3)
-                    block_metadata = get_block_metadata(
-                        timing_data, memory.onset - 0.01, memory.onset + 40.0
-                    )
-                    # We use a 6 TR (5.4s) shift to account for HRF.
-                    # We used 4 to start but just two at the end, based on the
-                    # prior matlab decoder, but it was written for 2s TRs, not
-                    # 0.9s.
-                    # Start TRs get 1 subtracted to include the 0-indexed TR
-                    start_idx = int(6 + np.floor(
-                        block_metadata['block_start'] / args.tr_dim
-                    )) - 1
-                    instruct_idx = int(6 + np.floor(
-                        block_metadata['instruct_onset'] / args.tr_dim
-                    )) - 1
-                    end_idx = int(6 + np.ceil(
-                        block_metadata['block_end'] / args.tr_dim
-                    ))
-                    if args.verbose:
-                        print(
-                            f"Start @ {start_idx:>3} ({block_metadata['block_start']:6.2f}), "
-                            f"instruct @ {instruct_idx:>3} ({block_metadata['instruct_onset']:6.2f}), "
-                            f"end @ {end_idx:>3}  ({block_metadata['block_end']:6.2f})."
-                        )
-
-                    block_id = (subject, run, idx)
-                    if block_id not in blocks.keys():
-                        # Store block metadata, scores coming separately
-                        blocks[block_id] = {
-                            "subject": subject,
-                            "age": subject_demographics['age'],
-                            "sex": subject_demographics['sex'],
-                            "suicidality": subject_demographics['suicidality'],
-                            "race_n": subject_demographics['race_n'],
-                            "race_dich": subject_demographics['race_dich'],
-                            "ethnicity": subject_demographics['ethnicity'],
-                            "task": task,
-                            "run": run,
-                            "instruct": block_metadata['instruct'],
-                            "period": idx,
-                            "orig_start_tr": start_idx,
-                            "max_fd": max_fd,
-                            "fd_outliers": num_fd_outliers,
-                            "feel_bad": block_metadata['feel_bad'],
-                            "vividness": block_metadata['vividness'],
-                        }
-                        scores[block_id] = {}
-
-                    # Each decoder gets its own score data per TR.
-                    dec_name, dec_weighted = get_decoder_name(score_file.name)
-                    if dec_name not in scores[block_id].keys():
-                        scores[block_id][dec_name] = {}
-                    scores[block_id][dec_name][dec_weighted] = {}
-                    block_scores = data.iloc[start_idx:end_idx, :].values
-
-                    # For instruct studies (Sarah), TR 0 is the beginning of instruct,
-                    # and memory period is negative TR.
-                    # For memory studies (Christina), the memory cue is TR 0.
-                    # For anyone aligning these scores with other timeseries,
-                    # orig_tr matches the original uncropped BOLD file (1-based, no zero)
-                    if args.zero_point == "instruct":
-                        tr_delta = instruct_idx - start_idx
-                    else:
-                        tr_delta = 0
-                    for tr, score in enumerate(block_scores.ravel()):
-                        scores[block_id][dec_name][dec_weighted][tr - tr_delta] = score
-                    print(
-                        f"  retrieved {len(block_scores.ravel())} "
-                        f"{dec_name}-{dec_weighted} scores - "
-                        f"{subject}.{run}.{idx} ({block_metadata['instruct']})"
-                    )
+                some_blocks, some_scores = get_scores_from_score_file(
+                    score_file, timing_data, max_fd, num_fd_outliers,
+                    subject, run, args
+                )
+                for k in some_blocks.keys():
+                    some_blocks[k].update(subject_dict)
+                blocks.update(some_blocks)
+                scores.update(some_scores)
 
     # Now that all decoder scores are in memory, lay them out properly.
     results = []
@@ -312,16 +359,29 @@ def main(args):
             for tr in list(scores[per_id][dec_key][wt_key].keys())
         ])
         for tr_idx, tr in enumerate(sorted(tr_values)):
+            # tr_idx and tr should be the same thing; we started at zero
+            if tr != tr_idx:
+                print(f"ERROR: TRs OFF: {tr} vs {tr_idx}")
             for dec_name in scores[per_id].keys():
                 # Start with a copy of the block's metadata, then add scores
                 result = rec.copy()
-                result['tr'] = tr
-                result['orig_tr'] = (
-                    tr_idx
-                    + result['orig_start_tr']
-                    + args.steady_state_outliers
-                )
+
+                # For memory studies (as the earliest cue, and for Christina),
+                # the memory cue is TR 0, and the whole block is positive.
+                # For instruct studies (original, and for Sarah),
+                # TR 0 is the beginning of instruct,
+                # and the preceding memory period has negative TRs.
+                # For anyone aligning these scores with other timeseries,
+                # orig_tr matches the original un-cropped BOLD file
+                tr_delta = result['instruct_tr'] - result['memory_tr']
+                result['tr_from_scan_start'] = tr + result['orig_start_tr']
+                result['tr_from_memory'] = tr
+                result['tr_from_instruct'] = tr - tr_delta
+                # Avoid later ambiguity and confusion from too many options
                 del result['orig_start_tr']
+                del result['memory_tr']
+                del result['instruct_tr']
+
                 result['decoder'] = dec_name
                 for dec_wt in scores[per_id][dec_name].keys():
                     if dec_wt == "0":
@@ -338,8 +398,9 @@ def main(args):
         ["subject", "run", "period", "decoder", ]
     )
     final_results.to_csv(args.output_file, index=False)
+    dt2 = datetime.now().strftime("%Y%m%d %H:%M:%S")
     if args.verbose:
-        print(f"Wrote scores to {str(args.output_file)}.")
+        print(f"Wrote scores to {str(args.output_file)} ({dt2}).")
 
 
 if __name__ == "__main__":
