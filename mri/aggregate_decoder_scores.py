@@ -200,17 +200,23 @@ def get_subject_data(subject_id, demographics):
     }
 
 
-def get_scores_from_score_file(
-        score_file, timing_data, max_fd, num_fd_outliers, subject, run, args
-):
-    """ Read scores, and organize them alongside other information.
+def get_blocks_from_run(subject, run_dir, args):
+    """ Read blocks from one run, and organize them alongside other information.
     """
 
-    run_blocks, run_scores = {}, {}
+    run = get_val_from_key(run_dir.name, "run")
+    print(f"Mining sub-{subject} run-{run} ... ", end='')
 
-    # Read the scores and start sorting them out.
-    print(f"Reading {score_file.name}")
-    data = pd.read_csv(score_file, index_col=None, header=None)
+    run_blocks = {}
+
+    # Get steady-state cropped events times
+    timing_data = get_run_events(run_dir, args)
+
+    # Get steady-state cropped movement confounds
+    max_fd, num_fd_outliers = get_fd(subject, run, args)
+    if args.verbose:
+        print(f"max FD {max_fd:0.2f} with {num_fd_outliers:0d} outlier TRs")
+
     # And drop all but the four 'memory' events
     memories = timing_data[timing_data['trial_type'] == 'memory']
     memories = memories.reset_index()
@@ -262,35 +268,42 @@ def get_scores_from_score_file(
             run_blocks[block_id] = {
                 "task": args.task,
                 "run": run,
-                "instruct": block_metadata['instruct'],
                 "period": idx,
                 "orig_start_tr": memory_idx + args.steady_state_outliers,
                 "memory_tr": memory_idx,  # Final, in ss-cropped reference
                 "instruct_tr": instruct_idx,  # Final, in ss-cropped reference
+                "end_tr": end_idx,  # Final, in ss-cropped reference
                 "max_fd": max_fd,
                 "fd_outliers": num_fd_outliers,
-                "feel_bad": block_metadata['feel_bad'],
-                "vividness": block_metadata['vividness'],
             }
-            run_scores[block_id] = {}
+            run_blocks[block_id].update(block_metadata)
 
-        # Each decoder gets its own score data per TR.
-        dec_name, dec_weighted = get_decoder_name(score_file.name)
-        if dec_name not in run_scores[block_id].keys():
-            run_scores[block_id][dec_name] = {}
-        run_scores[block_id][dec_name][dec_weighted] = {}
-        block_scores = data.iloc[memory_idx:end_idx, :].values
+    return run_blocks
 
-        for tr, score in enumerate(block_scores.ravel()):
-            # Save scores as (tr == 0 at memory cue), tr: score
-            run_scores[block_id][dec_name][dec_weighted][tr] = score
-        print(
-            f"  retrieved {len(block_scores.ravel())} "
-            f"{dec_name}-{dec_weighted} scores - "
-            f"{subject}.{run}.{idx} ({block_metadata['instruct']})"
-        )
 
-    return run_blocks, run_scores
+def get_scores_from_block(block, score_vec, dec_name, dec_weighted):
+    """ Read blocks from one run, and organize them alongside other information.
+    """
+
+    # Each decoder gets its own score data per TR.
+    run_scores = {
+        dec_name: {
+            dec_weighted: {
+            }
+        }
+    }
+    block_scores = score_vec[block['memory_tr']:block['end_tr']]
+
+    for tr, score in enumerate(block_scores.ravel()):
+        # Save scores as (tr == 0 at memory cue), tr: score
+        run_scores[dec_name][dec_weighted][tr] = score
+    print(
+        f"  retrieved {len(block_scores.ravel())} "
+        f"{dec_name}-{dec_weighted} scores - "
+        "{subject}.{run}.{period} ({instruct})".format(**block)
+    )
+
+    return run_scores
 
 
 def main(args):
@@ -311,7 +324,7 @@ def main(args):
     # Scrape data from all files, categorizing it in memory.
     blocks = {}
     scores = {}
-    for subject_dir in sorted(args.input_dir.glob("sub-U*")):
+    for subject_dir in sorted(args.input_dir.glob("sub-U*87")):
         subject = get_val_from_key(subject_dir.name, "sub")
         if subject in demographics.index:
             subject_dict = get_subject_data(
@@ -322,25 +335,36 @@ def main(args):
                 subject, pd.Series(dtype=str)
             )
         for run_dir in sorted(subject_dir.glob(f"task-{args.task}/run-*")):
-            run = get_val_from_key(run_dir.name, "run")
-            print(f"Mining sub-{subject} run-{run} ... ", end='')
-            # Get steady-state cropped events times
-            timing_data = get_run_events(run_dir, args)
-            # Get steady-state cropped movement confounds
-            max_fd, num_fd_outliers = get_fd(subject, run, args)
-            print(f"max FD {max_fd:0.2f} with {num_fd_outliers:0d} outlier TRs")
+            some_blocks = get_blocks_from_run(subject, run_dir, args)
+            for b_key, block in some_blocks.items():
+                # Add subject demographic data to the block
+                block.update(subject_dict)
+                # And save it to the global block storage
+                if b_key not in blocks.keys():
+                    blocks[b_key] = block
+                else:
+                    blocks[b_key].update(block)
+                if b_key not in scores.keys():
+                    scores[b_key] = {}
 
             for score_file in run_dir.glob("decoding/all_trs_*_scores.tsv"):
-
-                # Store metadata only once per subject/run/instruction/period.
-                some_blocks, some_scores = get_scores_from_score_file(
-                    score_file, timing_data, max_fd, num_fd_outliers,
-                    subject, run, args
-                )
-                for k in some_blocks.keys():
-                    some_blocks[k].update(subject_dict)
-                blocks.update(some_blocks)
-                scores.update(some_scores)
+                # Read the scores and start sorting them out.
+                print(f"Reading {score_file.name}")
+                score_df = pd.read_csv(score_file, index_col=None, header=None)
+                score_vec = score_df.values
+                dec_name, dec_weighted = get_decoder_name(score_file.name)
+                for b_key, block in some_blocks.items():
+                    some_scores = get_scores_from_block(
+                        block, score_vec, dec_name, dec_weighted
+                    )
+                    for d_key in some_scores.keys():
+                        if d_key not in scores[b_key].keys():
+                            scores[b_key][d_key] = some_scores[d_key]
+                        else:
+                            for w_key in some_scores[d_key].keys():
+                                if w_key not in scores[b_key][d_key].keys():
+                                    scores[b_key][d_key][w_key] = \
+                                        some_scores[d_key][w_key]
 
     # Now that all decoder scores are in memory, lay them out properly.
     results = []
@@ -390,9 +414,16 @@ def main(args):
                         result[score_str] = scores[per_id][dec_name][dec_wt][tr]
                 results.append(result)
 
+    # Sort and order results, without changing any data
     final_results = pd.DataFrame(results).sort_values(
         ["subject", "run", "period", "decoder", ]
-    )
+    )[[
+        'subject', 'age', 'sex', 'suicidality', 'race_n', 'race_dich',
+        'ethnicity', 'task', 'run', 'instruct', 'period',
+        'max_fd', 'fd_outliers', 'feel_bad', 'vividness',
+        'tr_from_scan_start', 'tr_from_memory', 'tr_from_instruct',
+        'decoder', 'weighted_score', 'average_score',
+    ]]
     final_results.to_csv(args.output_file, index=False)
     dt2 = datetime.now().strftime("%Y%m%d %H:%M:%S")
     if args.verbose:
