@@ -324,7 +324,7 @@ def main(args):
     # Scrape data from all files, categorizing it in memory.
     blocks = {}
     scores = {}
-    for subject_dir in sorted(args.input_dir.glob("sub-U*87")):
+    for subject_dir in sorted(args.input_dir.glob("sub-U*")):
         subject = get_val_from_key(subject_dir.name, "sub")
         if subject in demographics.index:
             subject_dict = get_subject_data(
