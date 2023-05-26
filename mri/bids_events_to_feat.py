@@ -34,10 +34,11 @@ def get_arguments():
             'trial_type' == 'question' as different trial types, saving them
             to separate Feat files.
             
-            An example to use the response in one trial as the value for another:
+            An example using the response in one trial as the value for another:
             
                 bids_events_to_feat.py sub-1_ses-1_task-a_run-01_events.tsv . \\
-                --use-response-from "How badly do you feel?" --use-response-to instruct
+                --use-response-from "How badly do you feel?" \\
+                --use-response-to instruct
              
             The above command will use the response to the question nearest the
             instruct as the value in the instruct record.
@@ -48,7 +49,7 @@ def get_arguments():
                 --as-block arrow
              
             The above command will treat multiple repeated arrow trials as one
-            large block, adding together each arrow duration into the long block.
+            large block, adding together each arrow duration into the block.
             
             A ppi example:
             
@@ -158,7 +159,9 @@ def get_arguments():
 
     # The --use-response argument is essentially a shortcut to implement both
     # --use-response-from and --use-response-to as the same trial_type.
-    assert len(parsed_args.use_response_from) == len(parsed_args.use_response_to)
+    assert (
+        len(parsed_args.use_response_from) == len(parsed_args.use_response_to)
+    )
     for trial_type in parsed_args.use_response:
         parsed_args.use_response_from.append(trial_type)
         parsed_args.use_response_to.append(trial_type)
@@ -226,8 +229,8 @@ def handle_errors(args, available_trial_types, available_stimuli):
             error_response = 1
     for stimulus in args.split_on_stimulus:
         if stimulus not in available_trial_types:
-            print(f"ERROR: Trial type '{stimulus}' requested to be split "
-                  "into separate trial types, but no events match this trial_type. ")
+            print(f"ERROR: Trial type '{stimulus}' requested to be split into "
+                  "separate trial types, but no events match this trial_type. ")
             error_response = 2
             
     assert len(args.use_response_from) == len(args.use_response_to), \
@@ -264,9 +267,11 @@ def do_ppi(data, args):
         # Extract just the data we need for our smaller feat-friendly files.
 
         # In the mem trial example used to write this,
-        # we'll hit 8 rows constituting 4 events, each with a 'memory' and an 'instruct'
+        # we'll hit 8 rows constituting 4 events,
+        # each with a 'memory' and an 'instruct'
         # Each 'instruct' will have 'distance' or 'immerse' as stimulus.
         # These need to be organized into 8 files with 4 events each,
+        # and 2 files with 6 events each,
         # coded with onsets from different rows and each with a different
         # paradigm for +/- 1
 
@@ -274,66 +279,103 @@ def do_ppi(data, args):
         # Only bother with rows included in --ppi-trial-types
         if row['trial_type'] in args.ppi_trial_types:
             if row['trial_type'] in cur_event['rows']:
-                # The current event is probably complete. Save it and create a new one.
+                # We're probably encountering a new event,
+                # and the current event is complete.
+                # Save it and create a new one.
                 ppi_events.append(cur_event)
                 cur_event = {"rows": [], }
             trial_types.add(row['trial_type'])
-            cur_event[f"{row['trial_type']}_onset"] = float(row['onset']) - args.shift
+            cur_event[f"{row['trial_type']}_onset"] = \
+                float(row['onset']) - args.shift
             cur_event[f"{row['trial_type']}_duration"] = float(row['duration'])
             cur_event[f"{row['trial_type']}_stimulus"] = row['stimulus']
             if row['trial_type'] == args.ppi_stimuli_from:
-                cur_event["stimulus"] = row['stimulus']
+                # Originally, we only kept trials with instruct/distance stimuli
+                cur_event["instruct"] = row['stimulus']
+            elif row['trial_type'] == 'memory':
+                # But we want all four memories to accompany the two instructs
+                cur_event["instruct"] = "memory"
             cur_event['rows'].append(row['trial_type'])
             if row['trial_type'] in args.ppi_stimuli_from:
                 stimuli.add(row['stimulus'])
 
     # Save the final event from the loop, not yet appended
     ppi_events.append(cur_event)
+    # ppi_events should now have all four blocks, no matter the arguments
 
     if args.verbose:
         print(f"Found {len(ppi_events)} ppi events.")
+
+    name_template = "trial-{}_stimulus-{}_pos-{}_neg-{}"
 
     # Create the eight (assuming 2 values for each of 3 variables, 2**3) files
     # we need an all-memory and all-instruct,
     # each with opposite distance/immerse encoding.
     for trial in sorted(trial_types):
-        # Hackily, we need to know what the 'other' trial is for file naming
+        # Hackily,
+        # we need to know what the 'other' trial is for file naming
         if trial == sorted(trial_types)[0] and len(trial_types) > 1:
             off_trial = sorted(trial_types)[1]
         else:
             off_trial = sorted(trial_types)[0]
-        for stimulus in sorted(stimuli):
-            # Hackily, we need to know what the 'other' stimulus is for file naming
+        for stimulus in sorted(stimuli):  # {'distance', 'immerse'}
+            # Hackily,
+            # we need to know what the 'other' stimulus is for file naming
             if stimulus == sorted(stimuli)[0] and len(stimuli) > 1:
                 off_stimulus = sorted(stimuli)[1]
             else:
                 off_stimulus = sorted(stimuli)[0]
-            for event in ppi_events:
+            for event in ppi_events:  # list of 4 dicts, one for each block
 
                 # Configure trial-based_'stimulus-all' entries.
-                name = f"trial-{trial}_stimulus-all_pos-{stimulus}_neg-{off_stimulus}"
+                name = name_template.format(
+                    trial, "all", stimulus, off_stimulus,
+                )
                 if name not in timing_tables:
                     timing_tables[name] = []
                 timing_tables[name].append({
                     "onset": event[f"{trial}_onset"],
                     "duration": event[f"{trial}_duration"],
-                    "value": 1 if event["stimulus"] == stimulus else -1,
+                    "value": 1 if event["instruct"] == stimulus else -1,
                 })
 
+                # Configure event-based distance/immerse vs memory entries.
+                if trial != 'memory':
+                    name = name_template.format(
+                        trial, "all", stimulus, "memory",
+                    )
+                    if name not in timing_tables:
+                        timing_tables[name] = []
+                    # Store ALL memories regardless of instruct.
+                    timing_tables[name].append({
+                        "onset": event[f"memory_onset"],
+                        "duration": event[f"memory_duration"],
+                        "value": -0.5,
+                    })
+                    # But only store the appropriate instructs, ignoring others
+                    if event["instruct"] == stimulus:
+                        timing_tables[name].append({
+                            "onset": event[f"{trial}_onset"],
+                            "duration": event[f"{trial}_duration"],
+                            "value": 1.0,
+                        })
+
                 # Configure 'trial-all'_stimulus-based entries.
-                name = f"trial-all_stimulus-{stimulus}_pos-{trial}_neg-{off_trial}"
+                name = name_template.format(
+                    "all", stimulus, trial, off_trial,
+                )
                 if name not in timing_tables:
                     timing_tables[name] = []
-                if event["stimulus"] == stimulus:
+                if event["instruct"] == stimulus:
                     timing_tables[name].append({
                         "onset": event[f"{trial}_onset"],
                         "duration": event[f"{trial}_duration"],
                         "value": 1,  # obviously (trial == trial)
                     })
-                    for other_trial in [tt for tt in trial_types if tt != trial]:
+                    for othertrial in [tt for tt in trial_types if tt != trial]:
                         timing_tables[name].append({
-                            "onset": event[f"{other_trial}_onset"],
-                            "duration": event[f"{other_trial}_duration"],
+                            "onset": event[f"{othertrial}_onset"],
+                            "duration": event[f"{othertrial}_duration"],
                             "value": -1,  # obviously (other_trial != trial)
                         })
 
@@ -370,7 +412,9 @@ def do_feat(data, args):
         # pass, before the actual pass, because the source value may come
         # after the row where it is to be used.
 
-        this_stimulus = "".join([c for c in row['stimulus'].lower() if c.isalpha()])
+        this_stimulus = "".join(
+            [c for c in row['stimulus'].lower() if c.isalpha()]
+        )
         if (
                 (row['trial_type'] in args.use_response_from) or
                 (this_stimulus in supplied_stimuli)
@@ -427,7 +471,8 @@ def do_feat(data, args):
             except IndexError:
                 splitting_stimulus = {}
                 if len(args.split_on_stimulus) > 0:
-                    print(f"  WARNING: asked to split on {args.split_on_stimulus}"
+                    print("  WARNING: "
+                          f"asked to split on {args.split_on_stimulus}"
                           f" but ran out of stimuli.")
         else:
             splitting_stimulus = {}
@@ -460,18 +505,21 @@ def do_feat(data, args):
                         # and not store it by itself.
                         same_event = timing_tables[event_name][-1]
                         same_event['duration'] = (
-                            event['onset'] + event['duration'] - same_event['onset']
+                            event['onset']
+                            + event['duration']
+                            - same_event['onset']
                         )
                     else:
                         # This event_name exists, and is specified as a block,
-                        # but is not contiguous with this event, so this event is new.
+                        # but is not contiguous with this event,
+                        # so this event is new.
                         timing_tables[event_name].append(event)
                 else:
                     # This event_name exists, but is not specified as a block,
                     # so it is a new event.
                     timing_tables[event_name].append(event)
             else:
-                # event_name not yet in timing_Tables, create a new list of events
+                # event_name not yet in timing_Tables, create new list of events
                 timing_tables[event_name] = [event, ]
         else:
             pass  # ignore events not specified
@@ -500,7 +548,9 @@ def main(args):
     available_stimuli = list(data['stimulus'].unique())
 
     # Get errors and mis-formed requests out of the way first
-    error_response = handle_errors(args, available_trial_types, available_stimuli)
+    error_response = handle_errors(
+        args, available_trial_types, available_stimuli
+    )
 
     if error_response > 0:
         print("       Available trial_types:")
@@ -540,7 +590,9 @@ def main(args):
         elif orig_trial_type in args.use_response_to:
             idx = args.use_response_to.index(orig_trial_type)
             response_from = args.use_response_from[idx]
-            from_str = "".join([c for c in response_from.lower() if c.isalpha()])
+            from_str = "".join(
+                [c for c in response_from.lower() if c.isalpha()]
+            )
             weight = f"as-{from_str}_response"
         else:
             weight = "as-ones"
@@ -579,7 +631,9 @@ def main(args):
             # This is ONLY for the 'failure' file.
             relevant_data.loc[errant_idx, 'value'] = 1
             relevant_data.loc[errant_idx].to_csv(
-                Path(args.output_path) / filename.replace("_response_events", "_failure_events"),
+                Path(args.output_path) / filename.replace(
+                    "_response_events", "_failure_events"
+                ),
                 sep='\t', index=None, header=None, float_format="%.3f",
             )
             if args.verbose:
