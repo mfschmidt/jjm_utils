@@ -2,6 +2,11 @@
 
 # aggregate_timeseries.py
 
+# This was created to help Christina organize all of the extracted timeseries
+# generated from ims and conte_new projects. It can be run on one subject's
+# timeseries directory to combine them all into one csv file for that
+# subject.
+
 import sys
 import re
 from pathlib import Path

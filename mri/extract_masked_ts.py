@@ -132,7 +132,7 @@ def get_arguments():
         # FreeSurfer aseg regions (with Right_/Left_ indicating laterality)
         re.compile(r"res-bold_aseg_([A-Za-z]+)_mask\.T1\.nii\.gz"),
         # FreeSurfer second-level regions (with .lh/.rh indicating laterality)
-        re.compile(r"res-bold_([a-z0-9]+)_([A-Za-z]+)_mask\.T1\.([a-z]+)\.nii\.gz"),
+        re.compile(r"res-bold_([a-z0-9]+)_([A-Za-z_]+)_mask\.T1\.([a-z]+)\.nii\.gz"),
     ]
     masks = {}
     # Use Path objects rather than strings, and make sure they exist.

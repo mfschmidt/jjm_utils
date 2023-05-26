@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# aggregate_scores.py
+# aggregate_decoder_scores.py
 
 import argparse
 import sys
