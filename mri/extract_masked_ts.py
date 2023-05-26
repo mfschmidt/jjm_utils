@@ -127,9 +127,12 @@ def get_arguments():
 
     # Establish mask file names to match
     patterns = [
+        # Schaefer2018 regions
         re.compile(r"_roi-([A-Za-z]+)_([a-z]+)\."),
-        re.compile(r"res-bold_hbt_HP_([A-Za-z]+)_mask\.T1\.([a-z]+)\.nii\.gz"),
+        # FreeSurfer aseg regions (with Right_/Left_ indicating laterality)
         re.compile(r"res-bold_aseg_([A-Za-z]+)_mask\.T1\.nii\.gz"),
+        # FreeSurfer second-level regions (with .lh/.rh indicating laterality)
+        re.compile(r"res-bold_([a-z0-9]+)_([A-Za-z]+)_mask\.T1\.([a-z]+)\.nii\.gz"),
     ]
     masks = {}
     # Use Path objects rather than strings, and make sure they exist.
@@ -150,14 +153,19 @@ def get_arguments():
                 if match:
                     print(f"{str(mask_file.name)} matched")
                     if len(match.groups()) == 1:
+                        # This is an aseg region
                         if "Right" in mask_file.name:
                             roi, lat = match.group(1), "rh"
                         elif "Left" in mask_file.name:
                             roi, lat = match.group(1), "lh"
                         else:
                             roi, lat = match.group(1), "bi"
-                    else:
+                    elif len(match.groups()) == 2:
+                        # This is a Schaefer2018 region
                         roi, lat = match.group(1), match.group(2)
+                    else:
+                        # Must be a FreeSurfer second-level segmentation
+                        roi, lat = match.group(2), match.group(3)
                     print(f"Key is '{roi}_{lat}'")
 
                     # Store the final binary mask
