@@ -70,5 +70,6 @@ done
 
 # Extract all permutations of specified trial_types and stimuli for PPI analyses
 #   Creates 8 new txt files
+#   As of 5/26/23, it creates 10 txt files (includes 6-row instruct-vs-all_memory files)
 bids_events_to_feat.py "${INPUT_PATH}" "${OUTPUT_PATH}" \
   --ppi-trial-types memory instruct --ppi-stimuli-from instruct "$@"
