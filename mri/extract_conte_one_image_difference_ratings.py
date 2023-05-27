@@ -94,6 +94,106 @@ def validate_args(args):
     return args
 
 
+def combo_score(df, subject_id, image_id, affect):
+    """ Return a success score for this subject's reappraisal of this image.
+    """
+
+    subject_filter = df['subject_id'] == subject_id
+    image_filter = df['image'] == image_id
+    reap_filter = df['mode'] == f"Reapp{affect}"
+
+    rating = f"{affect.lower()}_rating"
+
+    # See if this subject reappraised this image
+    reappraise_trial = df.loc[subject_filter & image_filter & reap_filter]
+    print(f"{len(reappraise_trial)} {affect} reappraisals "
+          f"of image {image_id} for {subject_id}")
+    if len(reappraise_trial) != 0:
+        return None
+
+    # Exactly one trial with correct reappraisal, calculate success score
+    look_filter = df['mode'] == f"Look{affect}"
+    look_trials = df.loc[look_filter, rating]
+    grand_look_mean = look_trials.mean()
+    grand_look_std = look_trials.std()
+    image_look_mean = df.loc[look_filter & image_filter, rating].mean()
+    subject_look_mean = df.loc[look_filter & subject_filter, rating].mean()
+    image_adj = (grand_look_mean - image_look_mean) / grand_look_std
+    subject_adj = (grand_look_mean - subject_look_mean) / grand_look_std
+    predicted_look_rating = grand_look_mean + image_adj + subject_adj
+    success_score = reappraise_trial.iloc[0][rating] - predicted_look_rating
+    print(f"Sub {subject_id} {affect}-reappraised {image_id} "
+          f"as a {reappraise_trial.iloc[0][rating]}; compared to "
+          f"grand mean of {grand_look_mean:0.2f} +- {grand_look_std:0.2f}, "
+          f"image mean of {image_look_mean:0.2f}, "
+          f"subject mean of {subject_look_mean:0.2f}, "
+          f"and a predicted look score of {predicted_look_rating:0.2f}. "
+          f"We score reappraisal success as {success_score}")
+    return max(0.00, success_score)
+
+
+def build_combo_scores(df):
+    """ Fill in success scores for all reappraisals.
+    """
+
+    for affect in ["Pos", "Neg"]:
+        rating = f"{affect.lower()}_rating"
+        reap_filter = df['mode'] == f"Reapp{affect}"
+        look_filter = df['mode'] == f"Look{affect}"
+        look_trials = df.loc[look_filter, rating]
+        grand_look_mean = look_trials.mean()
+        grand_look_std = look_trials.std()
+
+        for image_id in sorted(df['image'].unique()):
+            image_filter = df['image'] == image_id
+            image_look_mean = df.loc[look_filter & image_filter,
+                                     rating].mean()
+            image_adj = (image_look_mean - grand_look_mean) / grand_look_std
+
+            for subject_id in sorted(df['subject_id'].unique()):
+                subject_filter = df['subject_id'] == subject_id
+                subject_look_mean = df.loc[look_filter & subject_filter,
+                                           rating].mean()
+                subject_adj = ((subject_look_mean - grand_look_mean)
+                               / grand_look_std)
+
+                # See if this subject reappraised this image
+                reappraise_trial = df.loc[
+                    subject_filter & image_filter & reap_filter
+                ]
+                # print(f"{len(reappraise_trial)} {affect} reappraisals "
+                #       f"of image {image_id} for {subject_id}")
+                if len(reappraise_trial) != 1:
+                    continue
+
+                # For one trial with reappraisal, calculate success score
+                # ReappPos should decrease neg_rating and increase pos_rating
+                # ReappNeg should decrease neg_rating and increase pos_rating
+                pred_look_rating = grand_look_mean + image_adj + subject_adj
+                actual_reapp_rating = reappraise_trial.iloc[0][rating]
+                if affect == "Pos":
+                    success_score = actual_reapp_rating - pred_look_rating
+                elif affect == "Neg":
+                    success_score = pred_look_rating - actual_reapp_rating
+                else:
+                    # There is no else, this should never happen
+                    continue
+                # print(
+                #     f"Sub {subject_id} {affect}-reappraised {image_id} as a "
+                #     f"{reappraise_trial.iloc[0][rating]}; compared to grand "
+                #     f"mean of {grand_look_mean:0.2f} +- {grand_look_std:0.2f}"
+                #     f",  image mean of {image_look_mean:0.2f}, "
+                #     f"subject mean of {subject_look_mean:0.2f}, and a "
+                #     f"predicted look score of {pred_look_rating:0.2f}. "
+                #     f"We score reappraisal success as {success_score}"
+                # )
+
+                df.loc[
+                    subject_filter & image_filter & reap_filter,
+                    'reapp_success_score'
+                ] = max(0.00, success_score)
+
+
 def extract_from_subject(subject_path):
     """ Do the work on a participant.
     """
@@ -206,11 +306,14 @@ def main(args):
             subject_count += 1
 
     # Save out results
-    print(f"Combining {len(trials)} records from {subject_count} participants "
-          f"and writing to {str(args.output_path / 'difference_ratings.csv')}")
+    print(
+        f"Combining {len(trials)} records from {subject_count} "
+        f"participants and writing to "
+        f"{str(args.output_path / 'conte_one_ratings_by_trial.csv')}"
+    )
     data = pd.DataFrame(trials)
 
-    # As of 5/19/2023, with 58 subjects, data has 5220 trials/rows
+    # As of 5/19/2023, with 58 subjects, data have 5220 trials/rows
 
     # Break down by image
     # Calculate the mean Look rating for each image
@@ -240,9 +343,18 @@ def main(args):
                 data.loc[final_filter,
                          f"mean_{trial_type.lower()}_by_subject"] = mean_rating
 
+    # Calculate the scores we'll use to train the new ER decoder
+    data['neg_reapp_img_delta'] = data['delta_neg_rating_vs_image_mean'].apply(
+        lambda x: max(0.0, -1.0 * x)
+    )
+    data['pos_reapp_img_delta'] = data['delta_pos_rating_vs_image_mean'].apply(
+        lambda x: max(0.0, x)
+    )
+    build_combo_scores(data)
+
     # Save out difference scores
     data.to_csv(
-        args.output_path / f"ratings_by_trial.csv",
+        args.output_path / f"conte_one_ratings_by_trial.csv",
         index=False
     )
 
@@ -267,7 +379,7 @@ def main(args):
     image_data = image_data.reset_index().sort_values(['affect', 'image'])
 
     image_data.to_csv(
-        args.output_path / f"ratings_means_by_image.csv",
+        args.output_path / f"conte_one_ratings_means_by_image.csv",
         index=False
     )
 
@@ -279,8 +391,8 @@ def main(args):
     )
 
     subject_data.to_csv(
-        args.output_path / f"ratings_means_by_subject.csv",
-        index=False
+        args.output_path / f"conte_one_ratings_means_by_subject.csv",
+        index=True
     )
 
 
