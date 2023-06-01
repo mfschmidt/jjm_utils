@@ -240,8 +240,8 @@ def run_all_confounds(bold_img, confounds, roi_masks, tr_res, smooth):
         ts = masker.fit_transform(bold_img, confounds=confounds)
 
         rois.append({
-            "roi": roi_name.split("_")[0],
-            "hemi": roi_name.split("_")[1],
+            "roi": roi_name.rsplit("_", 1)[0],
+            "hemi": roi_name.rsplit("_", 1)[-1],
             "mask": roi_mask,
             "num_voxels": num_voxels,
             "masker": masker,
