@@ -60,7 +60,7 @@ def main(args):
     subject_id, task, run, roi, hemi = "NA", "NA", "NA", "NA", "NA"
     for ts_file in args.ts_path.glob("sub-*_mean_ts.tsv"):
         pattern = re.compile(
-            r"sub-([A-Z][0-9]+)_task-([a-z]+)_run-([0-9]+)_roi-([A-Za-z]+)_hemi-([a-z]+)_mean_ts.tsv"
+            r"sub-([A-Z][0-9]+)_task-([a-z]+)_run-([0-9]+)_roi-([A-Za-z_]+)_hemi-([a-z]+)_mean_ts.tsv"
         )
         match = pattern.match(ts_file.name)
         if match:
@@ -70,7 +70,7 @@ def main(args):
             roi = match.group(4)
             hemi = match.group(5)
         pattern = re.compile(
-            r"sub-([A-Z][0-9]+)_task-([a-z]+)_roi-([A-Za-z]+)_hemi-([a-z]+)_mean_ts.tsv"
+            r"sub-([A-Z][0-9]+)_task-([a-z]+)_roi-([A-Za-z_]+)_hemi-([a-z]+)_mean_ts.tsv"
         )
         match = pattern.match(ts_file.name)
         if match:
