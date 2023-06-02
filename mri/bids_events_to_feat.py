@@ -333,6 +333,8 @@ def do_ppi(data, args):
                 )
                 if name not in timing_tables:
                     timing_tables[name] = []
+
+                # Add the event to a basic 4-item ppi table
                 timing_tables[name].append({
                     "onset": event[f"{trial}_onset"],
                     "duration": event[f"{trial}_duration"],
@@ -342,7 +344,7 @@ def do_ppi(data, args):
                 # Configure event-based distance/immerse vs memory entries.
                 if trial != 'memory':
                     name = name_template.format(
-                        trial, "all", stimulus, "memory",
+                        trial, "all", "memory", stimulus,
                     )
                     if name not in timing_tables:
                         timing_tables[name] = []
@@ -350,14 +352,14 @@ def do_ppi(data, args):
                     timing_tables[name].append({
                         "onset": event[f"memory_onset"],
                         "duration": event[f"memory_duration"],
-                        "value": -0.5,
+                        "value": 0.5,
                     })
                     # But only store the appropriate instructs, ignoring others
                     if event["instruct"] == stimulus:
                         timing_tables[name].append({
                             "onset": event[f"{trial}_onset"],
                             "duration": event[f"{trial}_duration"],
-                            "value": 1.0,
+                            "value": -1.0,
                         })
 
                 # Configure 'trial-all'_stimulus-based entries.
