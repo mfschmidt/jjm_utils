@@ -98,7 +98,9 @@ def get_arguments():
               f"{COLOR_OFF}")
 
     if parsed_args.verbose:
-        print(f"subject '{parsed_args.subject}', session '{parsed_args.session}'")
+        print(
+            f"subject '{parsed_args.subject}', session '{parsed_args.session}'"
+        )
 
     return parsed_args
 
@@ -122,7 +124,10 @@ def find_session(subject_id, rawdata="/mnt/rawdata"):
     else:
         print(f"  Subject {subject_id} has {len(possibilities)} sessions")
         for possibility in possibilities:
-            if len(list(possibility.glob("func/sub-*_ses-*_task-*_run-*_bold.nii.gz"))) > 0:
+            niftis = list(possibility.glob(
+                "func/sub-*_ses-*_task-*_run-*_bold.nii.gz"
+            ))
+            if len(niftis) > 0:
                 return possibility.name[possibility.name.rfind("-") + 1:]
 
 
@@ -609,14 +614,20 @@ def frames_to_dataframe(task, frames, verbose=False):
             if task == "image":
                 if frame['Running'] == "Intro":
                     pass
-                elif frame['Running'] in ["RunN1", "RunN2", "RunN3", "RunP1", "RunP2", "RunP3", ]:
+                elif frame['Running'] in [
+                    "RunN1", "RunN2", "RunN3", "RunP1", "RunP2", "RunP3",
+                ]:
                     # Just a label of a group of trials with no trial data
                     pass
-                elif frame['Running'] in ["NegativeImageTask", "PositiveImageTask", ]:
+                elif frame['Running'] in [
+                    "NegativeImageTask", "PositiveImageTask",
+                ]:
                     # A wrapper frame for bunches of trials with no trial data
                     # But the trigger and fixation screens still have onset data
                     # One of these is the start time for each of six runs.
-                    metadata[frame['Procedure']] = ms_to_sec(frame["LeadingFixation.OnsetTime"])
+                    metadata[frame['Procedure']] = ms_to_sec(
+                        frame["LeadingFixation.OnsetTime"]
+                    )
                 elif frame['Running'] == "Tasks":
                     # The final label with no real trial data
                     pass
@@ -640,11 +651,16 @@ def frames_to_dataframe(task, frames, verbose=False):
                             'response': frame[prefix + 'RESP'],
                             'response_time': ms_to_sec(frame[prefix + 'RT']),
                         })
-                elif frame['Running'] in ["EmoPics", "NeutPics1", "NeutPics2", ]:
+                elif frame['Running'] in [
+                    "EmoPics", "NeutPics1", "NeutPics2",
+                ]:
                     # These are more like section headings than data frames.
-                    # None of them have event data within, but they do indicate run boundaries.
+                    # None of them have event data within, but they do indicate
+                    # run boundaries.
                     if "scannerTrig.RTTime" in frame:
-                        metadata[frame["Procedure"]] = ms_to_sec(frame["scannerTrig.RTTime"])
+                        metadata[frame["Procedure"]] = ms_to_sec(
+                            frame["scannerTrig.RTTime"]
+                        )
                     # else ignore this frame
                 elif frame['Running'].startswith("Rate"):
                     # The example I used has Rate1-Rate8,
@@ -653,11 +669,13 @@ def frames_to_dataframe(task, frames, verbose=False):
                     if "ratePos.OnsetTime" in frame:
                         prefix = "ratePos"
                         if verbose:
-                            print(f"  ignoring rating @ {frame[prefix + '.OnsetTime']}")
+                            print("  ignoring rating @ "
+                                  f"{frame[prefix + '.OnsetTime']}")
                     elif "rateNeg.OnsetTime" in frame:
                         prefix = "rateNeg"
                         if verbose:
-                            print(f"  ignoring rating @ {frame[prefix + '.OnsetTime']}")
+                            print("  ignoring rating @ "
+                                  f"{frame[prefix + '.OnsetTime']}")
                     # rows.append({
                     #     'trial_type': "rating",
                     #     'onset': ms_to_sec(frame[prefix + '.OnsetTime']),
@@ -667,16 +685,20 @@ def frames_to_dataframe(task, frames, verbose=False):
                     #     'response_time': ms_to_sec(frame[prefix + '.RT']),
                     # })
                 elif frame['Running'].startswith("RestState"):
-                    # A typical session has 12 of these, but they have no timing data,
+                    # A typical session has 12 of these,
+                    # but they have no timing data,
                     # no response data, nothing useful at all
                     pass
-                elif frame['Running'] in ["Neut1ProcsList", "Neut2ProcsList",
-                                          "ArrowProcsList", "EmoProcsList", ]:
+                elif frame['Running'] in [
+                    "Neut1ProcsList", "Neut2ProcsList",
+                    "ArrowProcsList", "EmoProcsList",
+                ]:
                     # These are more like section headings than data frames.
                     # None of them have actionable data within.
                     pass
                 elif frame['Running'].startswith("DirsList"):
-                    # The first example file had 405 of these, DirsList{4s,6s,8s}
+                    # The first example file had 405 of these,
+                    # DirsList{4s,6s,8s}
                     rows.append({
                         'trial_type': "arrow",
                         'onset': ms_to_sec(frame['arrowDisplay.OnsetTime']),
@@ -686,7 +708,8 @@ def frames_to_dataframe(task, frames, verbose=False):
                         'response_time': ms_to_sec(frame['arrowDisplay.RT']),
                     })
                 elif frame['Running'].startswith("NeutStims"):
-                    # The example I used has 90 of these, 45 NeutStimsA, 45 NeutStimsB
+                    # The example I used has 90 of these,
+                    # 45 NeutStimsA, 45 NeutStimsB
                     rows.append({
                         'trial_type': "neutral_image",
                         'onset': ms_to_sec(frame['neutStim.OnsetTime']),
@@ -701,11 +724,17 @@ def frames_to_dataframe(task, frames, verbose=False):
                     if 'sameDiff.OnsetTime' in frame:
                         rows.append({
                             'trial_type': "same_diff",
-                            'onset': ms_to_sec(frame['sameDiff.OnsetTime']),
-                            'duration': ms_to_sec(frame['sameDiff.OnsetToOnsetTime']),
+                            'onset': ms_to_sec(
+                                frame['sameDiff.OnsetTime']
+                            ),
+                            'duration': ms_to_sec(
+                                frame['sameDiff.OnsetToOnsetTime']
+                            ),
                             'stimulus': "n/a",
                             'response': frame['sameDiff.RESP'],
-                            'response_time': ms_to_sec(frame['sameDiff.RT']),
+                            'response_time': ms_to_sec(
+                                frame['sameDiff.RT']
+                            ),
                         })
                 elif frame['Running'].startswith("EmoStims"):
                     # The example I used has 45 of these, all EmoStimsX
@@ -719,60 +748,92 @@ def frames_to_dataframe(task, frames, verbose=False):
                     })
                     rows.append({
                         'trial_type': "same_diff",
-                        'onset': ms_to_sec(frame['sameDiff.OnsetTime']),
-                        'duration': ms_to_sec(frame['sameDiff.OnsetToOnsetTime']),
+                        'onset': ms_to_sec(
+                            frame['sameDiff.OnsetTime']
+                        ),
+                        'duration': ms_to_sec(
+                            frame['sameDiff.OnsetToOnsetTime']
+                        ),
                         'stimulus': "n/a",
                         'response': frame['sameDiff.RESP'],
-                        'response_time': ms_to_sec(frame['sameDiff.RT']),
+                        'response_time': ms_to_sec(
+                            frame['sameDiff.RT']
+                        ),
                     })
-                elif frame['Running'] in ["N1a", "N2a", "N3a", "N1b", "N2b", "N3b",
-                                          "P1a", "P2a", "P3a", "P1b", "P2b", "P3b", ]:
+                elif frame['Running'] in [
+                    "N1a", "N2a", "N3a", "N1b", "N2b", "N3b",
+                    "P1a", "P2a", "P3a", "P1b", "P2b", "P3b",
+                ]:
                     # This frame contains several pieces:
                     # cueSlide, stimSlide, isiSlide, itiSlide
                     rows.append({
                         'trial_type': frame['trialtype'],
-                        'onset': ms_to_sec(frame.get('cueSlide.OnsetTime', '0')),
+                        'onset': ms_to_sec(
+                            frame.get('cueSlide.OnsetTime', '0')
+                        ),
                         'duration': 0.0,
                         'stimulus': frame['cue'],
                         'response': "n/a", 'response_time': 0.0,
                     })
                     rows.append({
                         'trial_type': frame['trialtype'],
-                        'onset': ms_to_sec(frame.get('stimSlide.OnsetTime', '0')),
+                        'onset': ms_to_sec(
+                            frame.get('stimSlide.OnsetTime', '0')
+                        ),
                         'duration': 0.0,
                         'stimulus': frame['stim'],
-                        'response': "n/a", 'response_time': 0.0,
+                        'response': "n/a",
+                        'response_time': 0.0,
                     })
                     rows.append({
                         'trial_type': "isi",
-                        'onset': ms_to_sec(frame.get('isiSlide.OnsetTime', '0')),
+                        'onset': ms_to_sec(
+                            frame.get('isiSlide.OnsetTime', '0')
+                        ),
                         'duration': ms_to_sec(frame['isi']),
-                        'stimulus': "n/a", 'response': "n/a", 'response_time': 0.0,
+                        'stimulus': "n/a",
+                        'response': "n/a",
+                        'response_time': 0.0,
                     })
                     rows.append({
                         'trial_type': "iti",
-                        'onset': ms_to_sec(frame.get('itiSlide.OnsetTime', '0')),
+                        'onset': ms_to_sec(
+                            frame.get('itiSlide.OnsetTime', '0')
+                        ),
                         'duration': ms_to_sec(frame['iti']),
-                        'stimulus': "n/a", 'response': "n/a", 'response_time': 0.0,
+                        'stimulus': "n/a",
+                        'response': "n/a",
+                        'response_time': 0.0,
                     })
                 else:
-                    print(f"  Frame {i} (line {frame['line']}) missed. {task}: Running=='{frame['Running']}'")
+                    print(f"  Frame {i} (line {frame['line']}) missed. "
+                          f"{task}: Running=='{frame['Running']}'")
 
             if task == "mem":
                 if frame['Running'] in ["RatingList", "QList", "QList2", ]:
-                    # In these 'Running's, either QText.RT or QText.OnsetToOnsetTime is always '0'
-                    # and the other is non-zero. So for 'duration', we will use whichever is non-zero.
-                    reaction_time = ms_to_sec(frame.get('QText.RT', frame.get('Qtext.RT', '0')))
+                    # In these 'Running's, either QText.RT or
+                    # QText.OnsetToOnsetTime is always '0'
+                    # and the other is non-zero.
+                    # So for 'duration', we will use whichever is non-zero.
+                    reaction_time = ms_to_sec(
+                        frame.get('QText.RT', frame.get('Qtext.RT', '0'))
+                    )
                     if reaction_time > 0.001:
                         duration = reaction_time
                     else:
-                        duration = ms_to_sec(frame.get('QText.OnsetToOnsetTime', '0'))
+                        duration = ms_to_sec(
+                            frame.get('QText.OnsetToOnsetTime', '0')
+                        )
                     rows.append({
                         'trial_type': "question",
-                        'onset': ms_to_sec(frame.get('QText.OnsetTime', frame.get('Qtext.OnsetTime', '0'))),
+                        'onset': ms_to_sec(
+                            frame.get('QText.OnsetTime',
+                                      frame.get('Qtext.OnsetTime', '0'))
+                        ),
                         'duration': duration,
                         'stimulus': frame.get('Question', "n/a"),
-                        'response': frame.get('QText.RESP', frame.get('Qtext.RESP', "n/a")),
+                        'response': frame.get('QText.RESP',
+                                              frame.get('Qtext.RESP', "n/a")),
                         'response_time': reaction_time,
                     })
                 elif frame['Running'].startswith("Arrow"):
@@ -787,16 +848,24 @@ def frames_to_dataframe(task, frames, verbose=False):
                 elif frame['Running'].startswith("WordList"):
                     rows.append({
                         'trial_type': "memory",
-                        'onset': ms_to_sec(frame.get('MemCue.OnsetTime', '0')),
-                        'duration': ms_to_sec(frame.get('MemCue.OnsetToOnsetTime', '0')),
+                        'onset': ms_to_sec(
+                            frame.get('MemCue.OnsetTime', '0')
+                        ),
+                        'duration': ms_to_sec(
+                            frame.get('MemCue.OnsetToOnsetTime', '0')
+                        ),
                         'stimulus': frame['MemCue'],
                         'response': "n/a",
                         'response_time': "n/a",
                     })
                     rows.append({
                         'trial_type': "instruct",
-                        'onset': ms_to_sec(frame.get('Instruct.OnsetTime', '0')),
-                        'duration': ms_to_sec(frame.get('Instruct.OnsetToOnsetTime', '0')),
+                        'onset': ms_to_sec(
+                            frame.get('Instruct.OnsetTime', '0')
+                        ),
+                        'duration': ms_to_sec(
+                            frame.get('Instruct.OnsetToOnsetTime', '0')
+                        ),
                         'stimulus': frame['Word'].lower(),
                         'response': "n/a",
                         'response_time': "n/a",
@@ -804,13 +873,19 @@ def frames_to_dataframe(task, frames, verbose=False):
                 elif frame['Running'] == "RecallTaskProc":
                     rows.append({
                         'trial_type': "memory",
-                        'onset': ms_to_sec(frame['MemCue.OnsetTime']),
-                        'duration': ms_to_sec(frame.get('MemCue.OnsetToOnsetTime', '0')),
+                        'onset': ms_to_sec(
+                            frame['MemCue.OnsetTime']
+                        ),
+                        'duration': ms_to_sec(
+                            frame.get('MemCue.OnsetToOnsetTime', '0')
+                        ),
                         'stimulus': frame['Memory'],
                         'response': "n/a",
                         'response_time': "n/a",
                     })
-                elif frame['Running'] in ["SelfPracProc", "TimePracProc", ]:
+                elif frame['Running'] in [
+                    "SelfPracProc", "TimePracProc",
+                ]:
                     rows.append({
                         'trial_type': "instruct",
                         'onset': 0.0,
@@ -821,19 +896,22 @@ def frames_to_dataframe(task, frames, verbose=False):
                     })
                 elif frame['Running'].startswith("RunList"):
                     # Synchronization info between ePrime and the scanner
-                    off_key = f"SynchWithScanner{frame['Procedure'][-1]}.OffsetTime"
+                    last_proc = frame['Procedure'][-1]
+                    off_key = f"SynchWithScanner{last_proc}.OffsetTime"
                     if off_key in frame:
                         metadata[frame['Procedure']] = ms_to_sec(frame[off_key])
                         if verbose:
                             print(f"  synch @ {int(frame[off_key]):,}")
                 else:
-                    print(f"  Frame {i} (line {frame['line']}) missed. {task}: Running=='{frame['Running']}'")
+                    print(f"  Frame {i} (line {frame['line']}) missed. "
+                          f"{task}: Running=='{frame['Running']}'")
 
         else:
             pass
             # Every normal file has exactly one frame without 'Running'
             # No need to report it as it's not a problem.
-            # print(f"  Frame {i}, line {frame['line']}. 'Running' key not in frame.")
+            # print(f"  Frame {i}, line {frame['line']}. "
+            #       "'Running' key not in frame.")
 
     if verbose:
         print(f"  collected {len(rows)} frames")
@@ -842,7 +920,8 @@ def frames_to_dataframe(task, frames, verbose=False):
 
 
 def finalize_dataframe(df, offsets, verbose=False):
-    """ Use the offsets to shift dataframe's 'onset' values and fill in missing data.
+    """ Use the offsets to shift dataframe's 'onset' values
+        and fill in missing data.
 
         :param pd.DataFrame df:
             A pandas DataFrame containing all frames from the first pass
@@ -869,7 +948,7 @@ def finalize_dataframe(df, offsets, verbose=False):
         if (i < len(df) - 1) and (df.loc[i, 'duration'] == 0.0):
             df.loc[i, 'duration'] = df.loc[i + 1, 'onset'] - df.loc[i, 'onset']
 
-        # In the 6 second gaps where the Arrows directions go, add that block
+        # In the 6-second gaps where the Arrows directions go, add that block
         if (
                (i < len(df) - 1) and
                (df.loc[i, 'trial_type'] == 'question') and
@@ -905,7 +984,8 @@ def finalize_dataframe(df, offsets, verbose=False):
             sync_times.append({'t': v})
     try:
         # Extract runs from metadata
-        sync_df = pd.DataFrame(sync_times).sort_values('t').reset_index(drop=True)
+        sync_df = pd.DataFrame(sync_times)
+        sync_df = sync_df.sort_values('t').reset_index(drop=True)
         sync_df['run'] = [i + 1 for i in range(len(sync_df))]
 
         # Center each 'onset' to its run's start time.
@@ -914,7 +994,10 @@ def finalize_dataframe(df, offsets, verbose=False):
             lambda onset: onset - sync_df[sync_df['t'] < onset].max()[0]
         )
         df['run'] = df['original_onset'].apply(
-            lambda onset: sync_df.loc[sync_df[sync_df['t'] < onset]['t'].idxmax(), 'run']
+            lambda onset: sync_df.loc[
+                sync_df[sync_df['t'] < onset]['t'].idxmax(),
+                'run'
+            ]
         )
 
     except KeyError as key_error:
@@ -930,13 +1013,25 @@ def prettify_floats_to_strings(df):
     """ """
 
     # Ensure we write out pretty text to the tsv
-    # This converts numerics to strings, so best to do this after all calculations
+    # This converts numerics to strings,
+    # so best to do this after all calculations
     columns = df.columns
-    df = df.rename(columns={'onset': '_onset', 'duration': '_duration', 'response_time': '_response_time', })
-    df['onset'] = df['_onset'].apply(lambda t: "n/a" if not isinstance(t, Number) else f"{float(t):0.3f}")
-    df['duration'] = df['_duration'].apply(lambda t: "n/a" if not isinstance(t, Number) else f"{float(t):0.3f}")
+    df = df.rename(
+        columns={
+            'onset': '_onset',
+            'duration': '_duration',
+            'response_time': '_response_time',
+        }
+    )
+    df['onset'] = df['_onset'].apply(
+        lambda t: "n/a" if not isinstance(t, Number) else f"{float(t):0.3f}"
+    )
+    df['duration'] = df['_duration'].apply(
+        lambda t: "n/a" if not isinstance(t, Number) else f"{float(t):0.3f}"
+    )
     df['response_time'] = df['_response_time'].apply(
-        lambda t: "n/a" if not isinstance(t, Number) else f"{float(t):0.3f}")
+        lambda t: "n/a" if not isinstance(t, Number) else f"{float(t):0.3f}"
+    )
     return df[columns]
 
 
@@ -1026,11 +1121,11 @@ def extract_txt_timing(filename, shift=0.0, verbose=False):
             If this is set to True, print information about processing
 
         :returns:
-            A list of dicts, each containing a proper DataFrame, one for each run
+            A list of dicts, each containing a DataFrame, one for each run
     """
 
     task = "none"
-    if "automem" in str(filename):
+    if ("automem" in str(filename)) or ("Memory" in str(filename)):
         task = "mem"
     elif "picture" in str(filename):
         task = "image"
@@ -1054,7 +1149,7 @@ def extract_xl_timing(xl_file, shift=0.0, verbose=False):
             If this is set to True, print information about processing
 
         :returns:
-            A list of dicts, each containing a proper DataFrame, one for each run
+            A list of dicts, each containing a DataFrame, one for each run
     """
 
     # Load Excel data
@@ -1113,10 +1208,10 @@ def main(args):
 
     file = Path(args.events_file)
     outpath = Path(args.output_dir)
-    if "picture" in file.name:
+    if ("picture" in file.name.lower()) or ("reapp" in file.name.lower()):
         # "picture" or "picture_task"
         task = "image"
-    elif "mem" in file.name:
+    elif "mem" in file.name.lower():
         # "memory" or "automem_task"
         task = "mem"
     else:
