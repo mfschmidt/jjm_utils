@@ -1,6 +1,20 @@
 #!/usr/bin/env python3
 
-# template.py
+"""
+extract_conte_one_image_difference_ratings.py
+
+A typical invocation:
+
+    To loop over all subjects in the standard rawdata space,
+    and extract all of their ratings, combining them into a
+    tsv file with difference ratings at
+    /home/mike/Desktop/difference_ratings.csv
+
+    extract_conte_one_image_difference_ratings.py \
+    /home/mike/data/BI/human/rawdata/old_conte \
+    /home/mike/Desktop \
+    --verbose
+"""
 
 from pathlib import Path
 import argparse
@@ -117,9 +131,11 @@ def combo_score(df, subject_id, image_id, affect):
     grand_look_mean = look_trials.mean()
     grand_look_std = look_trials.std()
     image_look_mean = df.loc[look_filter & image_filter, rating].mean()
+    image_look_std = df.loc[look_filter & image_filter, rating].std()
     subject_look_mean = df.loc[look_filter & subject_filter, rating].mean()
-    image_adj = (grand_look_mean - image_look_mean) / grand_look_std
-    subject_adj = (grand_look_mean - subject_look_mean) / grand_look_std
+    subject_look_std = df.loc[look_filter & subject_filter, rating].std()
+    image_adj = (grand_look_mean - image_look_mean) / image_look_std
+    subject_adj = (grand_look_mean - subject_look_mean) / subject_look_std
     predicted_look_rating = grand_look_mean + image_adj + subject_adj
     success_score = reappraise_trial.iloc[0][rating] - predicted_look_rating
     print(f"Sub {subject_id} {affect}-reappraised {image_id} "
@@ -142,20 +158,31 @@ def build_combo_scores(df):
         look_filter = df['mode'] == f"Look{affect}"
         look_trials = df.loc[look_filter, rating]
         grand_look_mean = look_trials.mean()
-        grand_look_std = look_trials.std()
+        # grand_look_std = look_trials.std()
 
         for image_id in sorted(df['image'].unique()):
             image_filter = df['image'] == image_id
-            image_look_mean = df.loc[look_filter & image_filter,
-                                     rating].mean()
-            image_adj = (image_look_mean - grand_look_mean) / grand_look_std
+            image_look_mean = df.loc[
+                look_filter & image_filter, rating
+            ].mean()
+            image_look_std = df.loc[
+                look_filter & image_filter, rating
+            ].std()
+            # how much should we fudge the subject's mean to account for image?
+            image_adj = ((image_look_mean - grand_look_mean)
+                         / image_look_std)
 
             for subject_id in sorted(df['subject_id'].unique()):
                 subject_filter = df['subject_id'] == subject_id
-                subject_look_mean = df.loc[look_filter & subject_filter,
-                                           rating].mean()
-                subject_adj = ((subject_look_mean - grand_look_mean)
-                               / grand_look_std)
+                subject_look_mean = df.loc[
+                    look_filter & subject_filter, rating
+                ].mean()
+                # subject_look_std = df.loc[
+                #     look_filter & subject_filter, rating
+                # ].std()
+
+                # subject_adj = ((subject_look_mean - grand_look_mean)
+                #                / subject_look_std)
 
                 # See if this subject reappraised this image
                 reappraise_trial = df.loc[
@@ -169,7 +196,11 @@ def build_combo_scores(df):
                 # For one trial with reappraisal, calculate success score
                 # ReappPos should decrease neg_rating and increase pos_rating
                 # ReappNeg should decrease neg_rating and increase pos_rating
-                pred_look_rating = grand_look_mean + image_adj + subject_adj
+                # We predict the subject would have rated this image the
+                # same in a look trial as their own average over "look" trials,
+                # then we adjust that rating by our knowledge of the image
+                # being typically rated higher or lower than the grand mean.
+                pred_look_rating = subject_look_mean + image_adj
                 actual_reapp_rating = reappraise_trial.iloc[0][rating]
                 if affect == "Pos":
                     success_score = actual_reapp_rating - pred_look_rating
@@ -188,6 +219,7 @@ def build_combo_scores(df):
                 #     f"We score reappraisal success as {success_score}"
                 # )
 
+                # Save the success score, but it's only interpretable if it's +
                 df.loc[
                     subject_filter & image_filter & reap_filter,
                     'reapp_success_score'
