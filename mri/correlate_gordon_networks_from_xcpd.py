@@ -128,13 +128,20 @@ def tabulate_matrix_by_network(matrix_df, participant):
     """ From a correlation matrix with labels, save long data by network.
     """
 
+    if participant.startswith("U"):
+        site = "NYSPI"
+    elif participant.startswith("P"):
+        site = "UPMC"
+    else:
+        site = "N/A"
     stored_observations = set()
     observations = []
     for src in matrix_df.columns:
         src_hemi, src_network, src_num = src.split("_")
         for tgt in matrix_df.columns:
-            tgt_hemi, tgt_network, tgt_num = src.split("_")
+            tgt_hemi, tgt_network, tgt_num = tgt.split("_")
             observation = {
+                'site': site,
                 'participant': participant,
                 'src': src,
                 'src_hemi': src_hemi,
@@ -159,6 +166,8 @@ def tabulate_matrix_by_network(matrix_df, participant):
 
 
 def build_subject_correlations(args):
+    """ For one subject, calculate correlations and save them
+    """
     if args.verbose:
         print("Looking in {} for {} atlas timeseries in {} space.".format(
             args.participant_path, args.atlas, args.space
@@ -170,6 +179,9 @@ def build_subject_correlations(args):
         print(f"Found {len(rs_ts_files)} timeseries:")
         for file in sorted(rs_ts_files):
             print(f"  {file.name}")
+    if len(rs_ts_files) == 0:
+        # No files, there's nothing more to do.
+        return
 
     # Concatenate files if necessary
     ts_data = prepare_rs_ts(rs_ts_files)
