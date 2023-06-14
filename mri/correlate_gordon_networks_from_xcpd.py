@@ -128,7 +128,7 @@ def tabulate_matrix_by_network(matrix_df, participant):
     """ From a correlation matrix with labels, save long data by network.
     """
 
-    z_df = np.arctanh(matrix_df.values)
+    z_df = np.arctanh(matrix_df)
     if participant.startswith("U"):
         site = "NYSPI"
     elif participant.startswith("P"):
