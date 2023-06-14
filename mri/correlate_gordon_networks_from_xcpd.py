@@ -128,6 +128,7 @@ def tabulate_matrix_by_network(matrix_df, participant):
     """ From a correlation matrix with labels, save long data by network.
     """
 
+    z_df = np.arctanh(matrix_df.values)
     if participant.startswith("U"):
         site = "NYSPI"
     elif participant.startswith("P"):
@@ -153,6 +154,7 @@ def tabulate_matrix_by_network(matrix_df, participant):
                 'tgt_num': tgt_num,
                 'intra': int(src_network == tgt_network),
                 'r': matrix_df.loc[src, tgt],
+                'z': z_df.loc[src, tgt],
             }
             # We don't need the diagonal self-correlations
             # We only need one r value per pair, not both
@@ -228,7 +230,7 @@ def build_subject_correlations(args):
     )
     final_df.to_csv(
         args.output_path / f"sub-{args.participant}" / final_file_name,
-        sep='\t'
+        sep='\t', index=False
     )
 
 
