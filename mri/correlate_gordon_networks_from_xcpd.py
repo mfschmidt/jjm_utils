@@ -152,7 +152,8 @@ def tabulate_matrix_by_network(matrix_df, participant):
                 'tgt_hemi': tgt_hemi,
                 'tgt_network': tgt_network,
                 'tgt_num': tgt_num,
-                'intra': int(src_network == tgt_network),
+                'intra_network': int(src_network == tgt_network),
+                'intra_hemi': int(src_hemi == tgt_hemi),
                 'r': matrix_df.loc[src, tgt],
                 'z': z_df.loc[src, tgt],
             }
