@@ -144,18 +144,18 @@ def tabulate_matrix_by_network(matrix_df, participant):
             observation = {
                 'site': site,
                 'participant': participant,
-                'src': src,
+                # 'src': src,
                 'src_hemi': src_hemi,
                 'src_network': src_network,
                 'src_num': src_num,
-                'tgt': tgt,
+                # 'tgt': tgt,
                 'tgt_hemi': tgt_hemi,
                 'tgt_network': tgt_network,
                 'tgt_num': tgt_num,
                 'intra_network': int(src_network == tgt_network),
                 'intra_hemi': int(src_hemi == tgt_hemi),
-                'r': matrix_df.loc[src, tgt],
-                'z': z_df.loc[src, tgt],
+                'r': f"{matrix_df.loc[src, tgt]:0.5f}",
+                'z': f"{z_df.loc[src, tgt]:0.5f}",
             }
             # We don't need the diagonal self-correlations
             # We only need one r value per pair, not both
@@ -258,7 +258,7 @@ def aggregate_data(args):
         args.space, args.atlas
     )
     combo_data.to_csv(
-        args.output_path / combo_file, sep='\t'
+        args.output_path / combo_file, sep='\t', index=False
     )
 
 
