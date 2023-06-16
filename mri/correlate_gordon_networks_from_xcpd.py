@@ -128,7 +128,12 @@ def tabulate_matrix_by_network(matrix_df, participant):
     """ From a correlation matrix with labels, save long data by network.
     """
 
-    z_df = np.arctanh(matrix_df)
+    # To preserve high correlations, that would cause arctanh to divide
+    # by zero, we cap them at almost 1. Now they will all remain in the data.
+    capped_df = matrix_df.copy()
+    capped_df[capped_df > 0.99999] = 0.99999
+    capped_df[capped_df < -0.99999] = -0.99999
+    z_df = np.arctanh(capped_df)
     if participant.startswith("U"):
         site = "NYSPI"
     elif participant.startswith("P"):
@@ -159,7 +164,12 @@ def tabulate_matrix_by_network(matrix_df, participant):
             }
             # We don't need the diagonal self-correlations
             # We only need one r value per pair, not both
-            if (src != tgt) and ((src, tgt) not in stored_observations):
+            # And nan values do us no good at all, ignore them.
+            if (
+                    (src != tgt)
+                    and ((src, tgt) not in stored_observations)
+                    and np.isfinite(z_df.loc[src, tgt])
+            ):
                 # Remember this src/tgt pair in both directions
                 stored_observations.add((src, tgt))
                 stored_observations.add((tgt, src))
