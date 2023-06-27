@@ -144,10 +144,18 @@ def get_block_metadata(data, start_time, end_time):
     ]['response'].iloc[0]
 
     # Retrieve the actual timing bookends for this memory+instruct block
-    memory_onset = float(df[df['trial_type'] == 'memory']['onset'])
-    memory_duration = float(df[df['trial_type'] == 'memory']['duration'])
-    instruct_onset = float(df[df['trial_type'] == 'instruct']['onset'])
-    instruct_duration = float(df[df['trial_type'] == 'instruct']['duration'])
+    memory_onset = float(
+        df[df['trial_type'] == 'memory']['onset'].iloc[0]
+    )
+    memory_duration = float(
+        df[df['trial_type'] == 'memory']['duration'].iloc[0]
+    )
+    instruct_onset = float(
+        df[df['trial_type'] == 'instruct']['onset'].iloc[0]
+    )
+    instruct_duration = float(
+        df[df['trial_type'] == 'instruct']['duration'].iloc[0]
+    )
     block_end = instruct_onset + instruct_duration
 
     return {
