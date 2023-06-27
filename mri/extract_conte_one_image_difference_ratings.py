@@ -343,7 +343,11 @@ def main(args):
         f"participants and writing to "
         f"{str(args.output_path / 'conte_one_ratings_by_trial.csv')}"
     )
-    data = pd.DataFrame(trials)
+    # Create a dataframe, and keep columns consistently ordered.
+    data = pd.DataFrame(trials)[[
+        'subject_id', 'session_id', 'task', 'run', 'mode', 'image',
+        'pos_rating', 'pos_rt', 'neg_rating', 'neg_rt', 'events_in_trial',
+    ]]
 
     # As of 5/19/2023, with 58 subjects, data have 5220 trials/rows
 
@@ -385,7 +389,7 @@ def main(args):
     build_combo_scores(data)
 
     # Save out difference scores
-    data.to_csv(
+    data.sort_values(['subject_id', 'session_id', 'run', 'image', ]).to_csv(
         args.output_path / f"conte_one_ratings_by_trial.csv",
         index=False
     )
@@ -421,8 +425,12 @@ def main(args):
     subject_data = data.groupby("subject_id")[subject_cols].mean(
         numeric_only=True
     )
-
-    subject_data.to_csv(
+    subject_data = subject_data[[
+        'mean_lookpos_by_subject', 'mean_reapppos_by_subject',
+        'mean_lookneg_by_subject', 'mean_reappneg_by_subject',
+        'mean_lookneu_by_subject',
+    ]]
+    subject_data.sort_values('subject_id').to_csv(
         args.output_path / f"conte_one_ratings_means_by_subject.csv",
         index=True
     )
