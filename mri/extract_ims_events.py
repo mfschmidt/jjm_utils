@@ -151,19 +151,19 @@ def find_both_excel_files(one_excel_file):
     # and only files starting with a letter or number to avoid the .,~ files
     related_excel_files = list(
         # This will be the case after moving files to sourcedata
-        one_excel_file.parent.parent.parent.glob(
-            f"*/*/[A-Za-z0-9]*{task_to_find}*.xlsx"
+        one_excel_file.parent.parent.glob(
+            f"*/[A-Za-z0-9]*{task_to_find}*.xlsx"
         )
     )
     if len(related_excel_files) == 0:
         # This will always be the case in Christina's home directory
         related_excel_files = list(
-            one_excel_file.parent.parent.parent.glob(
-                f"{task_to_find}/excel/[A-Za-z0-9]*{task_to_find}*.xlsx"
+            one_excel_file.parent.parent.glob(
+                f"{task_to_find}/[A-Za-z0-9]*{task_to_find}*.xlsx"
             )
         ) + list(
-            one_excel_file.parent.parent.parent.glob(
-                f"{task_to_find}/excel/[A-Za-z0-9]*{task_to_find}*.csv"
+            one_excel_file.parent.parent.glob(
+                f"{task_to_find}/[A-Za-z0-9]*{task_to_find}*.csv"
             )
         )
 
