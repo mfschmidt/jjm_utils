@@ -209,7 +209,13 @@ def main(args):
             feat_id = match.group(1)
 
     if args.mask is None:
-        masks = sorted(args.mask_path.glob("res-bold_*.nii.gz"))
+        fs_masks = sorted(
+            args.mask_path.glob("res-bold_*.nii.gz")
+        )
+        schaefer_masks = sorted(
+            args.mask_path.glob("schaefer2018*res-bold_*.nii.gz")
+        )
+        masks = fs_masks + schaefer_masks
         print(f"Found {len(masks)} masks in {str(args.mask_path)}:")
     elif isinstance(args.mask, list):
         masks = args.mask
