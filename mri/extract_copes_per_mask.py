@@ -74,11 +74,21 @@ def get_arguments():
         setattr(args, "subject_id", match.group(1))
     else:
         if ".feat" in str(args.featpath):
-            setattr(args, "subject_id",
-                    args.featpath.parent.name.replace("sub-", ""))
+            setattr(
+                args,
+                "subject_id",
+                args.featpath.parent.name.replace(
+                    "sub-", ""
+                )
+            )
         else:
-            setattr(args, "subject_id",
-                    args.featpath.parent.parent.parent.parent.name.replace("sub-", ""))
+            setattr(
+                args,
+                "subject_id",
+                args.featpath.parent.parent.parent.parent.name.replace(
+                    "sub-", ""
+                )
+            )
 
     if args.verbose:
         print(f"Subject is '{args.subject_id}'.")
@@ -253,28 +263,38 @@ def main(args):
         cope_img = nib.load(str(cope.resolve()))
         cope_name = cope.name.replace(".nii.gz", "")
         if is_high_level:
-            # High level gfeat runs call every file cope1.feat, be more specific.
+            # High level gfeat runs call every file cope1.feat,
+            # be more specific.
             cope_name = cope.parent.parent.name.replace(".feat", "")
-            print(f"getting name {cope.parent.parent.name} from {str(cope.resolve())}")
+            print(f"getting name {cope.parent.parent.name} "
+                  f"from {str(cope.resolve())}")
         cope_data = cope_img.get_fdata()
         for mask in masks:
             mask_img = nib.load(str(mask.resolve()))
             mask_data = mask_img.get_fdata()
             if args.verbose:
-                print(f"Applying {mask.name} to {cope.name} (named {cope_name})...")
+                print(f"Applying {mask.name} to {cope.name} "
+                      f"(named {cope_name})...")
                 print("  cope is {} x {} x {} and mask is {} x {} x {}".format(
                     cope_data.shape[0], cope_data.shape[1], cope_data.shape[2],
                     mask_data.shape[0], mask_data.shape[1], mask_data.shape[2],
                 ))
-                # print("  mean cope is {:0.2f}, from {:0.2f} to {:0.2f}".format(
-                #     np.mean(cope_data), np.min(cope_data), np.max(cope_data),
-                # ))
+                # print(f"  mean cope is {np.mean(cope_data):0.2f}, "
+                #       f"from {np.min(cope_data):0.2f} "
+                #       f"to {np.max(cope_data):0.2f}")
 
             lbls, ns = np.unique(mask_data, return_counts=True)
             if len(lbls) == 1:
                 # An empty mask (all 0) has little value
                 if args.verbose:
                     print("  mask is useless, all values are {ns[0]}")
+                    voxels = pd.DataFrame([{
+                        'cope': cope_name, 'mask': mask.name[: -7],
+                        'label': lbls[0], 'value': np.NaN,
+                        'x': np.NaN, 'y': np.NaN, 'z': np.NaN,
+                    }, ])
+                    voxelwise_dataframes.append(voxels)
+
             elif len(lbls) == 2:
                 if args.verbose:
                     print(f"  mask looks binary ({len(lbls)} labels)")
