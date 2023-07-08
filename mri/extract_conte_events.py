@@ -56,6 +56,10 @@ def get_arguments():
         help="the path to BIDS-valid rawdata folder for looking up sessions",
     )
     parser.add_argument(
+        "--run-duration", type=float, default="0.0",
+        help="if a waitfornextrun event duration is desired, subtract from this"
+    )
+    parser.add_argument(
         "--verbose", action="store_true",
         help="set to trigger verbose output",
     )
@@ -109,7 +113,7 @@ def find_session(subject_id, rawdata="/mnt/rawdata"):
     """ From a subject id, find and return a session.
 
         :param str subject_id:
-            A subject_id, without the sub- portion
+            A subject_id, without the "sub-" portion
         :param str rawdata:
             The base path to a BIDS-valid rawdata directory
         :returns str:
@@ -548,8 +552,37 @@ def parse_file(file, verbose=False):
     # Match things like '    Procedure: Rating' or '    QText.RT: 500'
     key_value = re.compile(r"(\S+.*):\s+(.*)$")
     line_count = 0
+
+    # Most of the ePrime files are not utf-8.
+    # They may be 'ISO-8859-1', which is an old default from 40 years ago.
+    # Or they are sometimes utf-16-LE. We need to figure out which is which.
+    # The most common problem is when they have a special character, 0xa0.
+    # These are handled by the errors="replace" and subsequent .replace().
+    default_encoding = 'utf-16'
+    f = open(file, "r", encoding=default_encoding)
     try:
-        with open(file, "r", encoding='utf-16') as f:
+        f.readline()
+        encoding = 'utf-16'
+        if verbose:
+            print(f"File '{file}' must be '{encoding}'-encoded.")
+    except UnicodeDecodeError as e:
+        print(f"caught a UnicodeDecodeError {e}")
+        encoding = 'utf-8'
+    except UnicodeError as e:
+        print(f"caught a UnicodeError {e}")
+        encoding = 'utf-8'
+    f.close()
+
+    # Now that we have a guess for the file type, try to read it.
+    # Using errors="replace" automatically replaces the bad characters with
+    # another legal-but-unusable character chr(65533).
+    # I wanted to be smart and swap spaces for known space-like characters,
+    # but using 'surrogateescape' seems to make it even more difficult
+    # to figure out what the hell the bad characters were and what to do
+    # with them.
+    try:
+        error_handling = "replace"  # not "surrogateescape"
+        with open(file, "r", encoding=encoding, errors=error_handling) as f:
             frames = []
             for i, line in enumerate(f):
                 # Manage Start and Stop markers for frames
@@ -564,11 +597,16 @@ def parse_file(file, verbose=False):
                 # Many of these should be encountered between "Start" and "End"
                 match = key_value.search(line)
                 if match:
-                    frame[match.group(1)] = match.group(2).strip()
+                    # The replace function handles 'replaced' bad characters
+                    clean_val = match.group(2).strip()
+                    clean_val = clean_val.replace("\"", "")
+                    clean_val = clean_val.replace(chr(65533), " ")
+                    frame[match.group(1)] = clean_val
                 line_count = i
 
     except UnicodeDecodeError as ue:
-        print(f"  skipping non-UTF-16 file '{file.name}' ({i}, {line}) '{ue}'")
+        print(f"  skipping file with unknown encoding '{file.name}' "
+              f"({i}, '{line.rstrip()}') '{ue}'")
 
     if verbose:
         print(f"Read {line_count} lines, found {len(frames)} frames.")
@@ -835,6 +873,7 @@ def frames_to_dataframe(task, frames, verbose=False):
                         'response': frame.get('QText.RESP',
                                               frame.get('Qtext.RESP', "n/a")),
                         'response_time': reaction_time,
+                        'block': "n/a",
                     })
                 elif frame['Running'].startswith("Arrow"):
                     rows.append({
@@ -844,6 +883,7 @@ def frames_to_dataframe(task, frames, verbose=False):
                         'stimulus': frame['Arrow'],
                         'response': frame['Arrow.RESP'],
                         'response_time': ms_to_sec(frame['Arrow.RT']),
+                        'block': "n/a",
                     })
                 elif frame['Running'].startswith("WordList"):
                     rows.append({
@@ -857,6 +897,7 @@ def frames_to_dataframe(task, frames, verbose=False):
                         'stimulus': frame['MemCue'],
                         'response': "n/a",
                         'response_time': "n/a",
+                        'block': frame['Running'][-1],
                     })
                     rows.append({
                         'trial_type': "instruct",
@@ -869,6 +910,7 @@ def frames_to_dataframe(task, frames, verbose=False):
                         'stimulus': frame['Word'].lower(),
                         'response': "n/a",
                         'response_time': "n/a",
+                        'block': frame['Running'][-1],
                     })
                 elif frame['Running'] == "RecallTaskProc":
                     rows.append({
@@ -882,6 +924,7 @@ def frames_to_dataframe(task, frames, verbose=False):
                         'stimulus': frame['Memory'],
                         'response': "n/a",
                         'response_time': "n/a",
+                        'block': "n/a",
                     })
                 elif frame['Running'] in [
                     "SelfPracProc", "TimePracProc",
@@ -893,6 +936,7 @@ def frames_to_dataframe(task, frames, verbose=False):
                         'stimulus': frame['Instruction'].lower(),
                         'response': "n/a",
                         'response_time': "n/a",
+                        'block': "n/a",
                     })
                 elif frame['Running'].startswith("RunList"):
                     # Synchronization info between ePrime and the scanner
@@ -901,14 +945,19 @@ def frames_to_dataframe(task, frames, verbose=False):
                     if off_key in frame:
                         metadata[frame['Procedure']] = ms_to_sec(frame[off_key])
                         if verbose:
-                            print(f"  synch @ {int(frame[off_key]):,}")
+                            print(f"  RunList synch @ {int(frame[off_key]):,}")
+                    else:
+                        # This is still a block boundary
+                        metadata[frame['Procedure']] = 0.0
+                        if verbose:
+                            print(f"  RunList block without synch")
                 else:
                     print(f"  Frame {i} (line {frame['line']}) missed. "
                           f"{task}: Running=='{frame['Running']}'")
 
         else:
             pass
-            # Every normal file has exactly one frame without 'Running'
+            # Every normal file has exactly one "LogFrame" without 'Running'
             # No need to report it as it's not a problem.
             # print(f"  Frame {i}, line {frame['line']}. "
             #       "'Running' key not in frame.")
@@ -946,7 +995,20 @@ def finalize_dataframe(df, offsets, verbose=False):
     for i in range(len(df)):
         # Fill in zeroes with the size of the temporal gap they fall within
         if (i < len(df) - 1) and (df.loc[i, 'duration'] == 0.0):
-            df.loc[i, 'duration'] = df.loc[i + 1, 'onset'] - df.loc[i, 'onset']
+            # These studies use 10- or 20-second events, but when the ISI
+            # is missing, it's hard to tell. So fix them here.
+            # First, use the calculated value as a default, then override it
+            # if it looks reasonable to do so.
+            duration = df.loc[i + 1, 'onset'] - df.loc[i, 'onset']
+            df.loc[i, 'duration'] = duration
+            if df.loc[i, 'trial_type'] == "memory":
+                if (duration >= 9.99) and (duration <= 17.00):
+                    df.loc[i, 'duration'] = 10.000
+            if df.loc[i, 'trial_type'] == "instruct":
+                if (duration >= 9.99) and (duration <= 17.00):
+                    df.loc[i, 'duration'] = 10.000
+                if (duration >= 19.99) and (duration <= 27.00):
+                    df.loc[i, 'duration'] = 20.000
 
         # In the 6-second gaps where the Arrows directions go, add that block
         if (
@@ -975,13 +1037,24 @@ def finalize_dataframe(df, offsets, verbose=False):
     if verbose:
         print(f"  added {len(additions)} events to {len(df)}-event dataframe")
     df = pd.concat([df, pd.DataFrame(additions), ])
+    df = df.sort_values('onset').reset_index(drop=True)
 
     # Format offsets nicely for splitting timing into separate fMRI BOLD runs
     sync_times = []
     sync_df = pd.DataFrame(data=None)
     for k, v in offsets.items():
         if k != 'task':
-            sync_times.append({'t': v})
+            if v > 0.0:
+                # This is a run boundary, and we have synch information
+                sync_times.append({'t': v, 'p': k, })
+            else:
+                # We have a run boundary, but did not get Synch information.
+                # This only runs when we have a BPD file missing Synch info,
+                # and there is no "fixed" table to pull it from.
+                earliest_onset = df[df['block'] == k[-1]]['onset'].min()
+                sync_times.append({'t': earliest_onset - 8.0, 'p': k, })
+                print("WARNING: Forced to guess scanner synch at 8 seconds.")
+
     try:
         # Extract runs from metadata
         sync_df = pd.DataFrame(sync_times)
@@ -1035,15 +1108,18 @@ def prettify_floats_to_strings(df):
     return df[columns]
 
 
-def add_end_of_run_wait_events(df):
+def add_end_of_run_wait_events(df, run_length):
     """ Add 'wait' event when participant completed a run """
 
-    end_time = 289.0 * 0.900  # volumes * TR
     fixation_duration = 2.0  # These are variable, but we lack any data
 
     if "waitfornextrun" not in df['trial_type'].unique():
         last_event = df.loc[df['onset'].idxmax()]
         end_of_run = last_event['onset'] + last_event['duration']
+        if run_length > 0.0:
+            wait_duration = run_length - end_of_run - fixation_duration - 1.0
+        else:
+            wait_duration = 0.0
         final_event = pd.DataFrame([
             {
                 "onset": end_of_run + 1.0,
@@ -1055,7 +1131,7 @@ def add_end_of_run_wait_events(df):
             },
             {
                 'onset': end_of_run + 1.0 + fixation_duration,
-                'duration': end_time - end_of_run - fixation_duration - 1.0,
+                'duration': wait_duration,
                 'trial_type': "waitfornextrun",
                 'response_time': "n/a",
                 'stimulus': "The next run of the task will begin in a moment.",
@@ -1066,13 +1142,15 @@ def add_end_of_run_wait_events(df):
     return df
 
 
-def split_into_runs(events_data, task, verbose=False):
+def split_into_runs(events_data, task, run_length=0.0, verbose=False):
     """ One ePrime file covers multiple fMRI runs; split them out. """
 
     bids_columns = [
         'onset', 'duration', 'trial_type',
         'response_time', 'stimulus', 'response',
     ]
+
+    # Split into runs
     runs = []
     try:
         run_nums = sorted(events_data['run'].unique())
@@ -1085,7 +1163,7 @@ def split_into_runs(events_data, task, verbose=False):
                 bids_columns
             ].sort_values(by='onset', key=lambda x: x.astype(float))
             if task == "mem":
-                one_run_df = add_end_of_run_wait_events(one_run_df)
+                one_run_df = add_end_of_run_wait_events(one_run_df, run_length)
             if verbose:
                 run_start = one_run_df['onset'].astype(float).min()
                 run_end = one_run_df['onset'].astype(float).max()
@@ -1108,15 +1186,20 @@ def split_into_runs(events_data, task, verbose=False):
     return runs
 
 
-def extract_txt_timing(filename, shift=0.0, verbose=False):
+def extract_txt_timing(filename, supp_table=None, shift=0.0, run_length=0.0,
+                       verbose=False):
     """ Given a known OK ePrime txt output file, parse it
 
         This is the top-of-hierarchy file for each text file
 
         :param pathlib.Path filename:
             The file to parse
+        :param pd.Dataframe supp_table:
+            An alternative table with memory cue onsets
         :param float shift:
             How many seconds to subtract from each timestamp in filename
+        :param float run_length:
+            How many seconds in a complete run
         :param bool verbose:
             If this is set to True, print information about processing
 
@@ -1125,26 +1208,41 @@ def extract_txt_timing(filename, shift=0.0, verbose=False):
     """
 
     task = "none"
-    if ("automem" in str(filename)) or ("Memory" in str(filename)):
+    if (
+            ("automem" in str(filename).lower()) or
+            ("memory" in str(filename).lower())
+    ):
         task = "mem"
-    elif "picture" in str(filename):
+    elif (
+            ("picture" in str(filename).lower())
+            or ("image" in str(filename).lower())
+    ):
         task = "image"
 
     frames = parse_file(filename, verbose=verbose)
     event_df, md = frames_to_dataframe(task, frames, verbose=verbose)
+    # In the case where we are determining synch times with an extra table,
+    # overwrite the synch times before finalizing the dataframe.
+    if supp_table is not None:
+        for k, v in md.items():
+            if k != "task":
+                blocks = supp_table[supp_table['block'] == k[-1]]
+                md[k] = blocks['block_onset'].min() / 1000.0
     event_df = finalize_dataframe(event_df, md, verbose=verbose)
     event_df['onset'] = event_df['onset'] - shift
 
-    return split_into_runs(event_df, task, verbose=verbose)
+    return split_into_runs(event_df, task, run_length, verbose=verbose)
 
 
-def extract_xl_timing(xl_file, shift=0.0, verbose=False):
+def extract_xl_timing(xl_file, shift=0.0, run_length=0.0, verbose=False):
     """ Extract events from a Conte task Excel sheet
 
         :param pathlib.Path xl_file:
             The file to parse
         :param float shift:
             How many seconds to subtract from each timestamp in filename
+        :param float run_length:
+            How many seconds in a complete run
         :param bool verbose:
             If this is set to True, print information about processing
 
@@ -1195,7 +1293,44 @@ def extract_xl_timing(xl_file, shift=0.0, verbose=False):
     event_df['shift'] = event_df['shift'] - shift
     event_df['onset'] = event_df['onset'] - event_df['shift']
 
-    return split_into_runs(event_df, task, verbose=verbose)
+    return split_into_runs(event_df, task, run_length, verbose=verbose)
+
+
+def find_extra_bpd_mem_table(orig_events_file):
+    """ Find a supplemental file to fill in details about timing.
+
+        In BPD, the ePrime txt file only has scanner synchronization data for
+        the first run. The rest are blank. But there's another table for most
+        subjects that has accurate onsets for the memory cue. By using
+        information from both files, we can create an accurate events.tsv file.
+    """
+
+    fixed_file, spaced_file, data, df = None, None, None, None
+    sep = ","
+    candidates = orig_events_file.parent.glob("BPD_MEMORY_fmri_*.txt")
+    for f in candidates:
+        if "fixed" in f.name:
+            fixed_file = f
+            sep = ";"
+            data = open(fixed_file, "r", errors="replace", )
+            break
+        else:
+            spaced_file = f
+            sep = " "
+            data = open(spaced_file, "r", errors="replace", )
+
+    if data:
+        df = pd.read_csv(data, sep=sep, header=None)
+        df = df.rename(
+            columns={
+                2: "block",
+                3: "block_onset",
+                4: "cue",
+                5: "mem_onset",
+            }
+        )
+
+    return df
 
 
 def main(args):
@@ -1207,7 +1342,7 @@ def main(args):
         ))
 
     file = Path(args.events_file)
-    outpath = Path(args.output_dir)
+    out_path = Path(args.output_dir)
     if ("picture" in file.name.lower()) or ("reapp" in file.name.lower()):
         # "picture" or "picture_task"
         task = "image"
@@ -1219,26 +1354,33 @@ def main(args):
         raise ValueError(f"I cannot figure out what task '{file.name}' holds.")
 
     # Do the extraction
-    outpath.mkdir(exist_ok=True)
+    out_path.mkdir(exist_ok=True)
     if file.name.endswith(".xlsx") or file.name.endswith(".xls"):
         print("WARNING:")
         print("Using the Excel version is less reliable than the txt version.")
         print("This code is forced to make some assumptions about durations ")
         print("that are not necessarily true.")
-        runs = extract_xl_timing(file, shift=args.shift, verbose=args.verbose)
+        runs = extract_xl_timing(
+            file, shift=args.shift, run_length=args.run_duration,
+            verbose=args.verbose
+        )
     else:
-        runs = extract_txt_timing(file, shift=args.shift, verbose=args.verbose)
+        runs = extract_txt_timing(
+            file, supp_table=find_extra_bpd_mem_table(file),
+            shift=args.shift, run_length=args.run_duration,
+            verbose=args.verbose
+        )
 
     file_root = f"sub-{args.subject}_ses-{args.session}_task-{task}"
     for run in runs:
         tsv_file = f"{file_root}_run-{run['run']:02d}_events.tsv"
         run['dataframe'].to_csv(
-            outpath / tsv_file, sep='\t', header=True, index=False,
+            out_path / tsv_file, sep='\t', header=True, index=False,
             float_format='%0.3f',
         )
     json_file = f"{file_root}_events.json"
     json.dump(
-        make_sidecar(task), open(outpath / json_file, "w"),
+        make_sidecar(task), open(out_path / json_file, "w"),
         sort_keys=False, indent=4,
     )
 
