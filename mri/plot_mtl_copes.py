@@ -140,7 +140,8 @@ def parse_masks(dataframe):
     return dataframe
 
 
-def get_subject_means(project_dir, feat_threshold_string, group_map, verbose=False):
+def get_subject_means(project_dir, feat_threshold_string, group_map,
+                      verbose=False):
     """
 
         :param Path project_dir: the directory containing subject directories
@@ -155,7 +156,10 @@ def get_subject_means(project_dir, feat_threshold_string, group_map, verbose=Fal
 
     cope_files = []
     re_pattern = re.compile(r"(sub-\S+)_cope-cope([0-9]+)_voxels_by_masks.csv")
-    glob_pattern = f"sub-*/masks/{feat_threshold_string}/sub-*_cope-cope*_voxels_by_masks.csv"
+    glob_pattern = os.path.join(
+        "sub-*", "masks", feat_threshold_string,
+        "sub-*_cope-cope*_voxels_by_masks.csv"
+    )
     i = 0
     for i, file in enumerate(project_dir.glob(glob_pattern)):
         match = re_pattern.match(file.name)
@@ -176,9 +180,13 @@ def get_subject_means(project_dir, feat_threshold_string, group_map, verbose=Fal
 
     groupers = ['subject', 'hemi', 'mask', 'cope', 'atlas', 'dx', ]
     columns = ['value', 'weighted_value', 'y']
-    region_level_data = voxel_level_data[groupers + columns].groupby(groupers).mean().reset_index()
+    region_level_data = voxel_level_data[
+        groupers + columns
+    ].groupby(groupers).mean().reset_index()
 
-    region_midpoints = region_level_data[['hemi', 'mask', 'y', ]].groupby(['hemi', 'mask']).mean()
+    region_midpoints = region_level_data[
+        ['hemi', 'mask', 'y', ]
+    ].groupby(['hemi', 'mask']).mean()
     region_level_data['group_y'] = region_level_data.apply(
         lambda row: region_midpoints.loc[(row['hemi'], row['mask']), 'y'],
         axis=1
@@ -218,7 +226,9 @@ def get_color_map(voxels, alpha=0.7):
 
     # Extract all regions recognized by FreeSurfer
     lut_file = Path(os.environ["FREESURFER_HOME"]) / "FreeSurferColorLUT.txt"
-    line_re = re.compile(r"([0-9]+)\s+([\w-]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+).*")
+    line_re = re.compile(
+        r"([0-9]+)\s+([\w-]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+).*"
+    )
     regions = []
     for line in open(lut_file, "r"):
         match = line_re.match(line)
@@ -333,8 +343,12 @@ def plot_comparisons(voxels, y, hemi, cmap, top, bottom, ax):
             dx_idx = voxels.loc[voxels['dx'] == dx].index
             idx = region_idx.intersection(hemi_idx).intersection(dx_idx)
             comp_values[dx] = voxels.loc[idx, 'value'].values
-            mean_beta, sd_beta, min_beta, max_beta = get_safe_stats(comp_values[dx])
-            mean_y, sd_y, min_y, max_y = get_safe_stats(voxels.loc[idx, y].values)
+            mean_beta, sd_beta, min_beta, max_beta = get_safe_stats(
+                comp_values[dx]
+            )
+            mean_y, sd_y, min_y, max_y = get_safe_stats(
+                voxels.loc[idx, y].values
+            )
             c = cmap.get(dx.lower(), (0.5, 0.5, 0.5, 0.5))
             edge_color = (c[0], c[1], c[2], 0.8)
             face_color = (c[0], c[1], c[2], 0.2)
@@ -356,7 +370,8 @@ def plot_comparisons(voxels, y, hemi, cmap, top, bottom, ax):
             label = dx if dx not in labeled else None
             labeled.add(dx)
             ax.add_patch(patches.Rectangle(
-                (mean_y - 0.3 if dx == 'HV' else mean_y + 0.01, mean_beta - sd_beta),
+                (mean_y - 0.3 if dx == 'HV' else mean_y + 0.01,
+                 mean_beta - sd_beta),
                 0.29, 2.0 * sd_beta, label=label,
                 ec=edge_color, fc=face_color,
                 zorder=2, fill=True
@@ -432,7 +447,9 @@ def add_ap_atlas_ordinal(dataframe):
         atlas_adds[atlas] = i + 1
 
     # Create a dataframe of atlases, in order of their mean y
-    y_means = dataframe[['atlas', 'mask', 'y']].groupby(['atlas', 'mask']).mean()
+    y_means = dataframe[
+        ['atlas', 'mask', 'y']
+    ].groupby(['atlas', 'mask']).mean()
     y_means = y_means.sort_values(
         'y', ascending=True
     ).sort_values(
@@ -510,7 +527,8 @@ def prepare_data(data, winsorize=False):
     # so find unplottable values and remove them.
     # voxels.loc[voxels['mean_y'].isna(), 'mean_y'] = 0.0
     # voxels['mean_y'] = voxels['mean_y'].astype(int)
-    # Finally, after modifications are complete, filter only valid voxels for plotting.
+    # Finally, after modifications are complete,
+    # filter only valid voxels for plotting.
     data = data.dropna()
 
     # Pull back severe outliers, if requested.
@@ -535,10 +553,15 @@ def prepare_data(data, winsorize=False):
     data = data[data['mask'].isin(bilateral_regions)]
 
     # Add the anterior-posterior order of regions for evenly spread box plots
-    add_ap_atlas_ordinal(data)
+    if len(data) > 0:
+        add_ap_atlas_ordinal(data)
+    else:
+        print(f" --- Empty data! ---")
 
     # Add a mean y for each region, based on precise y values
-    # y_means = voxels[['hemi', 'mask', 'group_y']].groupby(['hemi', 'mask']).mean()
+    # y_means = voxels[
+    #     ['hemi', 'mask', 'group_y']
+    # ].groupby(['hemi', 'mask']).mean()
     # voxels['mean_y'] = voxels.apply(
     #     lambda row: y_means.loc[(row['hemi'], row['mask']), 'group_y'],
     #     axis=1
@@ -572,7 +595,8 @@ def get_title(args, cope=None, atlas=None):
         match = pattern.search(Path(args.input).name)
         if match:
             plot_title = (
-                f"{args.project.upper()} Subject {args.subject}: {match.group(1)}"
+                f"{args.project.upper()} Subject {args.subject}: "
+                f"{match.group(1)}"
             )
         else:
             plot_title = (
@@ -581,7 +605,8 @@ def get_title(args, cope=None, atlas=None):
     elif Path(args.input).is_dir():
         cope_string = "" if cope is None else f"cope {cope}"
         atlas_string = "" if atlas is None else f" in {atlas} atlas"
-        plot_title = f"{args.project.upper()} Subject averages for {cope_string}{atlas_string}"
+        plot_title = (f"{args.project.upper()} "
+                      f"Subject averages for {cope_string}{atlas_string}")
 
     return plot_title
 
@@ -612,7 +637,9 @@ def plot_subject(
     # We want to spread them out a bit, but not overlap other y-values
     voxels['jitter_y'] = voxels[y_to_plot] + np.random.randn(len(voxels)) * 0.20
 
-    fig, (left_ax, right_ax) = plt.subplots(ncols=2, sharey='all', figsize=(18, 6))
+    fig, (left_ax, right_ax) = plt.subplots(
+        ncols=2, sharey='all', figsize=(18, 6)
+    )
 
     # Plot the COPE value at each voxel, colored by region
     if draw_voxels:
@@ -717,8 +744,12 @@ def plot_group(
     if draw_boxes:
         plot_boxes(voxels, y_to_plot, 'lh', cmap, top, bottom, left_ax)
         plot_boxes(voxels, y_to_plot, 'rh', cmap, top, bottom, right_ax)
-        plot_comparisons(voxels, y_to_plot, 'lh', cmap, top, bottom, left_delta_ax)
-        plot_comparisons(voxels, y_to_plot, 'rh', cmap, top, bottom, right_delta_ax)
+        plot_comparisons(
+            voxels, y_to_plot, 'lh', cmap, top, bottom, left_delta_ax
+        )
+        plot_comparisons(
+            voxels, y_to_plot, 'rh', cmap, top, bottom, right_delta_ax
+        )
 
     # Use only one legend, and put it outside the plotting area.
     left_ax.legend().remove()
@@ -763,10 +794,18 @@ def plot_group(
     right_delta_ax.set_xlabel("anterior  -  posterior")
 
     num_participants = len(voxels['subject'].unique())
-    left_ax.set_title(f"Left hippocampus and amygdala (combined, n={num_participants})")
-    right_ax.set_title(f"Right hippocampus and amygdala (combined, n={num_participants})")
-    left_delta_ax.set_title("Left hippocampus and amygdala (MDD vs HV)")
-    right_delta_ax.set_title("Right hippocampus and amygdala (MDD vs HV)")
+    left_ax.set_title(
+        f"Left hippocampus and amygdala (combined, n={num_participants})"
+    )
+    right_ax.set_title(
+        f"Right hippocampus and amygdala (combined, n={num_participants})"
+    )
+    left_delta_ax.set_title(
+        "Left hippocampus and amygdala (MDD vs HV)"
+    )
+    right_delta_ax.set_title(
+        "Right hippocampus and amygdala (MDD vs HV)"
+    )
 
     fig.suptitle(title)
     fig.tight_layout()
@@ -775,6 +814,46 @@ def plot_group(
     # print(f"One axes shapes {left_ax.get_xlim()} {left_ax.get_ylim()}")
 
     return fig
+
+
+def filter_and_plot(data, args, cope=None, atlas=None, ):
+    """ Filter the voxel data by cope/atlas, and plot it. """
+
+    # Start with every voxel in the index, then restrict by cope and atlas
+    cope_idx, atlas_idx = data.index, data.index
+    cope_string, atlas_string = "", ""
+    if cope is not None:
+        cope_string = f"_cope-{cope}"
+        cope_idx = data[data['cope'] == cope].index
+        if args.verbose:
+            print(f"    cope {cope} has {len(cope_idx)} voxels ")
+    if atlas is not None:
+        atlas_string = f"_atlas-{atlas}"
+        atlas_idx = data[data['atlas'] == atlas].index
+        if args.verbose:
+            print(f"    atlas {atlas} has {len(atlas_idx)} voxels ")
+    voxel_indices = cope_idx.intersection(atlas_idx)
+    if args.verbose:
+        print(f"    {len(voxel_indices)} voxels being included in the plot")
+    voxels_to_plot = prepare_data(
+        data.loc[voxel_indices, :], winsorize=args.winsorize
+    )
+    if len(voxels_to_plot) > 0:
+        figure = plot_group(
+            voxels_to_plot,
+            title=get_title(args, cope=cope, atlas=atlas),
+            draw_voxels=(not args.skip_voxels),
+            draw_boxes=args.draw_boxes,
+            plot_at_mean_ap=args.plot_at_mean_ap,
+            cmap=get_color_map(voxels_to_plot, alpha=0.5),
+            mmap=get_marker_map(voxels_to_plot),
+        )
+        # Plot the data and save the plot
+        winsor_string = '_w' if args.winsorize else ''
+        filename = f"group{cope_string}{atlas_string}{winsor_string}.png"
+        if args.verbose:
+            print(f"Writing figure {filename} to {args.output}")
+        figure.savefig(Path(args.output) / filename)
 
 
 def main(args):
@@ -798,8 +877,10 @@ def main(args):
             print(f"Writing figure to {args.output}")
         figure.savefig(args.output)
     elif input_path.is_dir():
-        group_map = get_group_map(args.group_file)
-        voxels = get_subject_means(input_path, args.mask_csv_subdir, group_map, verbose=args.verbose)
+        group_map = get_group_map(args.group_file, verbose=args.verbose)
+        voxels = get_subject_means(
+            input_path, args.mask_csv_subdir, group_map, verbose=args.verbose
+        )
         if args.cope == 0:
             copes = sorted(voxels['cope'].unique())
         else:
@@ -809,45 +890,9 @@ def main(args):
         else:
             atlases = [args.atlas, ]
         for cope in copes:
-            cope_idx = voxels[voxels['cope'] == cope].index
-            voxels_to_plot = prepare_data(
-                voxels.loc[cope_idx, :], winsorize=args.winsorize
-            )
-            figure = plot_group(
-                voxels_to_plot,
-                title=get_title(args, cope=cope),
-                draw_voxels=(not args.skip_voxels),
-                draw_boxes=args.draw_boxes,
-                plot_at_mean_ap=args.plot_at_mean_ap,
-                cmap=get_color_map(voxels_to_plot, alpha=0.5),
-                mmap=get_marker_map(voxels_to_plot),
-            )
-            # Plot the data and save the plot
-            winsor_str = '_w' if args.winsorize else ''
-            filename = f"group_cope-{str(cope)}{winsor_str}.png"
-            if args.verbose:
-                print(f"Writing figure {filename} to {args.output}")
-            figure.savefig(Path(args.output) / filename)
+            filter_and_plot(voxels, args, cope=cope, )
             for atlas in atlases:
-                atlas_idx = voxels[voxels['atlas'] == atlas].index
-                combined_idx = cope_idx.intersection(atlas_idx)
-                voxels_to_plot = prepare_data(
-                    voxels.loc[combined_idx, :], winsorize=args.winsorize
-                )
-                figure = plot_group(
-                    voxels_to_plot,
-                    title=get_title(args, cope=cope, atlas=atlas),
-                    draw_voxels=(not args.skip_voxels),
-                    draw_boxes=args.draw_boxes,
-                    plot_at_mean_ap=args.plot_at_mean_ap,
-                    cmap=get_color_map(voxels_to_plot, alpha=0.5),
-                    mmap=get_marker_map(voxels_to_plot),
-                )
-                # Plot the data and save the plot
-                filename = f"group_cope-{str(cope)}_atlas-{atlas}{winsor_str}.png"
-                if args.verbose:
-                    print(f"Writing figure {filename} to {args.output}")
-                figure.savefig(Path(args.output) / filename)
+                filter_and_plot(voxels, args, cope=cope, atlas=atlas, )
 
     else:
         print("The specified input is neither a file nor a directory.")
