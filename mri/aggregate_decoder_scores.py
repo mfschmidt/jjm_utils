@@ -174,23 +174,24 @@ def get_decoder_name(filename):
     """ From the file name, get a usable column name for the decoder.
     """
 
-    score_file_parts = filename.split("_")
-    if score_file_parts[2] in ["negative", "negaff", ]:
-        decoder = "negaff"
-    elif score_file_parts[2] in ["reappraise", "emoreg", ]:
-        decoder = "emoreg"
+    updated_names = {
+        "negative": "negaff",
+        "reappraise": "emoreg",
+    }
+    weighted_map = {
+        "ones": "1",
+        "weights": "0",
+    }
+    pattern = re.compile(r"all_trs_(\w*)_([A-Za-z]*)_scores\.tsv")
+    match = pattern.search(filename)
+    if match:
+        # If there's an alternate name, translate it
+        decoder = updated_names.get(match.group(1), match.group(1))
+        weighted = weighted_map.get(match.group(2), "-1")
+        return decoder, weighted
     else:
-        decoder = score_file_parts[2]
-        # print(f"Error! Score file {filename} has no decoder name.")
-    if "_ones_" in filename:
-        weighted = "0"
-    elif "_weights_" in filename:
-        weighted = "1"
-    else:
-        weighted = "-1"  # would only ever happen if something failed
-        print(f"Error! Score file {filename} has no weighting info.")
-
-    return decoder, weighted
+        print(f"ERROR: could not interpret score filename '{filename}'.")
+        return "unknown", "unknown"
 
 
 def get_subject_data(subject_id, demographics):
