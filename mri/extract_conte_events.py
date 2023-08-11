@@ -550,7 +550,7 @@ def parse_file(file, verbose=False):
     # Match things like '*** Header Start ***' or '    *** LogFrame End ***'
     pattern_wrapper = re.compile(r"[*][*][*]\s+(\S+)\s+(\S+)\s+[*][*][*]")
     # Match things like '    Procedure: Rating' or '    QText.RT: 500'
-    key_value = re.compile(r"(\S+.*):\s+(.*)$")
+    key_value = re.compile(r"(\S+?.*?):\s+(.*)$")
     line_count = 0
 
     # Most of the ePrime files are not utf-8.
@@ -1002,12 +1002,12 @@ def finalize_dataframe(df, offsets, verbose=False):
             duration = df.loc[i + 1, 'onset'] - df.loc[i, 'onset']
             df.loc[i, 'duration'] = duration
             if df.loc[i, 'trial_type'] == "memory":
-                if (duration >= 9.99) and (duration <= 17.00):
+                if (duration >= 9.99) and (duration <= 17.50):
                     df.loc[i, 'duration'] = 10.000
             if df.loc[i, 'trial_type'] == "instruct":
-                if (duration >= 9.99) and (duration <= 17.00):
+                if (duration >= 9.99) and (duration <= 17.50):
                     df.loc[i, 'duration'] = 10.000
-                if (duration >= 19.99) and (duration <= 27.00):
+                if (duration >= 19.99) and (duration <= 27.50):
                     df.loc[i, 'duration'] = 20.000
 
         # In the 6-second gaps where the Arrows directions go, add that block
@@ -1066,8 +1066,9 @@ def finalize_dataframe(df, offsets, verbose=False):
         df['onset'] = df['original_onset'].apply(
             lambda onset: onset - sync_df[sync_df['t'] < onset].max()[0]
         )
+        df['onset'] = df['onset'].fillna(0.0)
         df['run'] = df['original_onset'].apply(
-            lambda onset: sync_df.loc[
+            lambda onset: 0 if onset < sync_df['t'].min() else sync_df.loc[
                 sync_df[sync_df['t'] < onset]['t'].idxmax(),
                 'run'
             ]
@@ -1227,7 +1228,8 @@ def extract_txt_timing(filename, supp_table=None, shift=0.0, run_length=0.0,
         for k, v in md.items():
             if k != "task":
                 blocks = supp_table[supp_table['block'] == k[-1]]
-                md[k] = blocks['block_onset'].min() / 1000.0
+                if np.isfinite(blocks['block_onset'].min()):
+                    md[k] = blocks['block_onset'].min() / 1000.0
     event_df = finalize_dataframe(event_df, md, verbose=verbose)
     event_df['onset'] = event_df['onset'] - shift
 
@@ -1307,8 +1309,14 @@ def find_extra_bpd_mem_table(orig_events_file):
 
     fixed_file, spaced_file, data, df = None, None, None, None
     sep = ","
-    candidates = orig_events_file.parent.glob("BPD_MEMORY_fmri_*.txt")
+    candidates = list(
+        orig_events_file.parent.glob("BPD_MEMORY_fmri_*.txt")
+    )
+    candidates += list(
+        (orig_events_file.parent / "mem").glob("BPD_MEMORY_fmri_*.txt")
+    )
     for f in candidates:
+        print(f"  supplementing with {f.name}")
         if "fixed" in f.name:
             fixed_file = f
             sep = ";"
