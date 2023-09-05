@@ -5,7 +5,6 @@
 # This script will input a subject id, and combined with other options,
 # create binary masks and cropped timeseries of masked data.
 
-import os
 import sys
 import argparse
 import re
@@ -79,8 +78,6 @@ def get_arguments():
         Typical usage:
 
         extract_schaefer_roi.py U03280 \\
-        --subjects-dir /data/BI/human/derivatives/new_conte/freesurfer7 \\
-        --fmriprep-dir /data/BI/human/derivatives/new_conte/fmriprep \\
         --output-dir /data/export/home/christinam/conte_new \\
         --atlas /path/to/atlas/tpl-STUFF_dseg.nii.gz \\
         --region-names ld \\
@@ -102,14 +99,6 @@ def get_arguments():
     parser.add_argument(
         "subject",
         help="subject id, with or without the 'sub-'",
-    )
-    parser.add_argument(
-        "--subjects-dir", default=None,
-        help="Specify FreeSurfer SUBJECTS_DIR to override ENV variable",
-    )
-    parser.add_argument(
-        "--fmriprep-dir", default=None,
-        help="Specify fMRIPrep path, above the subject dir.",
     )
     parser.add_argument(
         "--output-dir", default=".",
@@ -146,27 +135,7 @@ def get_arguments():
 
     ok_to_run = True
 
-    # Make sure we can find FreeSurfer data
-    if args.subjects_dir is None:
-        if 'SUBJECTS_DIR' in os.environ:
-            setattr(args, "subjects_dir", os.environ['SUBJECTS_DIR'])
-        else:
-            print(f"{err}No SUBJECTS_DIR in ENV, and not specified.")
-            ok_to_run = False
-
     # Use Path objects rather than strings, and make sure they exist.
-    if Path(args.subjects_dir).exists():
-        print(f"Path '{args.subjects_dir}' exists.")
-        setattr(args, "subjects_dir", Path(args.subjects_dir))
-    else:
-        print(f"{err}Path '{args.subjects_dir}' does not exist.")
-        ok_to_run = False
-    if Path(args.fmriprep_dir).exists():
-        print(f"Path '{args.fmriprep_dir}' exists.")
-        setattr(args, "fmriprep_dir", Path(args.fmriprep_dir))
-    else:
-        print(f"{err}Path '{args.fmriprep_dir}' does not exist.")
-        ok_to_run = False
     if Path(args.output_dir).exists():
         print(f"Path '{args.output_dir}' exists.")
         setattr(args, "output_dir", Path(args.output_dir))
