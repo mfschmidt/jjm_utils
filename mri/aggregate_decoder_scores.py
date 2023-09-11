@@ -39,6 +39,10 @@ def get_arguments():
         help="Threshold for motion (FD in mm) to consider volume a spike"
     )
     parser.add_argument(
+        "--decoder-names", nargs='+',
+        help="Explicitly list decoders to aggregate, rather than all of them"
+    )
+    parser.add_argument(
         "--tr-dim", default=0.9, type=float,
         help="How many seconds in the 4th dimension from one volume to the next"
     )
@@ -357,11 +361,17 @@ def main(args):
                     scores[b_key] = {}
 
             for score_file in run_dir.glob("decoding/all_trs_*_scores.tsv"):
+                # See if we are interested in this particular decoder's output.
+                dec_name, dec_weighted = get_decoder_name(score_file.name)
+                if args.decoder_names is not None:
+                    if dec_name not in args.decoder_names:
+                        continue
+                # else go ahead and detect all decoders...
+
                 # Read the scores and start sorting them out.
                 print(f"Reading {score_file.name}")
                 score_df = pd.read_csv(score_file, index_col=None, header=None)
                 score_vec = score_df.values
-                dec_name, dec_weighted = get_decoder_name(score_file.name)
                 for b_key, block in some_blocks.items():
                     some_scores = get_scores_from_block(
                         block, score_vec, dec_name, dec_weighted
