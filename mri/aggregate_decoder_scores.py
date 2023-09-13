@@ -182,16 +182,12 @@ def get_decoder_name(filename):
         "negative": "negaff",
         "reappraise": "emoreg",
     }
-    weighted_map = {
-        "ones": "1",
-        "weights": "0",
-    }
     pattern = re.compile(r"all_trs_(\w*)_([A-Za-z]*)_scores\.tsv")
     match = pattern.search(filename)
     if match:
         # If there's an alternate name, translate it
         decoder = updated_names.get(match.group(1), match.group(1))
-        weighted = weighted_map.get(match.group(2), "-1")
+        weighted = match.group(2)
         return decoder, weighted
     else:
         print(f"ERROR: could not interpret score filename '{filename}'.")
@@ -312,7 +308,7 @@ def get_scores_from_block(block, score_vec, dec_name, dec_weighted):
         run_scores[dec_name][dec_weighted][tr] = score
     print(
         f"  retrieved {len(block_scores.ravel())} "
-        f"{dec_name}-{dec_weighted} scores - "
+        f"{dec_name} - {dec_weighted} scores - "
         "{subject}.{run}.{period} ({instruct})".format(**block)
     )
 
@@ -362,11 +358,12 @@ def main(args):
 
             for score_file in run_dir.glob("decoding/all_trs_*_scores.tsv"):
                 # See if we are interested in this particular decoder's output.
+                dec_filename = score_file.name
                 dec_name, dec_weighted = get_decoder_name(score_file.name)
                 if args.decoder_names is not None:
                     if dec_name not in args.decoder_names:
                         continue
-                # else go ahead and detect all decoders...
+                # else go ahead and collect all decoders...
 
                 # Read the scores and start sorting them out.
                 print(f"Reading {score_file.name}")
@@ -423,9 +420,9 @@ def main(args):
 
                 result['decoder'] = dec_name
                 for dec_wt in scores[per_id][dec_name].keys():
-                    if dec_wt == "0":
+                    if dec_wt == "ones":
                         score_str = "average_score"
-                    elif dec_wt == "1":
+                    elif dec_wt == "weights":
                         score_str = "weighted_score"
                     else:
                         score_str = "error"
