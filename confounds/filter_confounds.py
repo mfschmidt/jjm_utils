@@ -76,7 +76,8 @@ def curious_confounds(data):
 def scrubbed_confounds(data):
     """ Return the regressors we are interested in testing. """
     column_candidates = [
-        col for col in data.columns if col.startswith("motion_outlier")
+        col for col in data.columns
+        if (col.startswith("motion_outlier") and data[col].sum() > 0)
     ]
     return data[
         [col for col in column_candidates if col in data.columns]
@@ -89,9 +90,20 @@ def mod_confounds(args):
     full_confounds_data = pd.read_csv(args.input, sep="\t", header=0)
     full_shape = full_confounds_data.shape
 
+    if args.start_tr is not None and args.start_tr > 0:
+        full_confounds_data = full_confounds_data.iloc[args.start_tr:, :]
+        print(f" {len(full_confounds_data.index)} x {len(full_confounds_data.columns)}  "
+              "via '--start-tr'")
+
+    if args.total_trs is not None and args.total_trs > 0:
+        full_confounds_data = full_confounds_data.iloc[:args.total_trs, :]
+        print(f" {len(full_confounds_data.index)} x {len(full_confounds_data.columns)}  "
+              "via '--total-trs'")
+
     if args.level == "motion":
-        confounds_data = motion_confounds(full_confounds_data, args.motion,
-                                          verbose=args.verbose)
+        confounds_data = motion_confounds(
+            full_confounds_data, args.motion, verbose=args.verbose
+        )
         if args.verbose:
             print(f" {len(confounds_data.columns)} cols via '{args.level}'")
     elif args.level == "basic":
@@ -111,6 +123,19 @@ def mod_confounds(args):
         ], axis=1, sort=False)
         if args.verbose:
             print(f" {len(confounds_data.columns)} cols via '{args.level}'")
+    elif args.level == "csf_wm":
+        if "csf_wm" in full_confounds_data.columns:
+            confounds_data = pd.concat([
+                full_confounds_data[["csf_wm", ]],
+                motion_confounds(full_confounds_data, args.motion,
+                                 verbose=args.verbose),
+            ], axis=1, sort=False)
+        else:
+            confounds_data = motion_confounds(
+                full_confounds_data, args.motion, verbose=args.verbose
+            )
+    else:
+        confounds_data = pd.DataFrame()
 
     if args.scrub:
         confounds_data = pd.concat([
@@ -120,21 +145,15 @@ def mod_confounds(args):
         if args.verbose:
             print(f" {len(confounds_data.columns)} cols via 'scrubbing'")
 
-    if args.start_tr is not None and args.start_tr > 0:
-        confounds_data = confounds_data.iloc[args.start_tr:, :]
-        print(f" {len(confounds_data.index)} x {len(confounds_data.columns)}  via '--start-tr'")
-
-    if args.total_trs is not None and args.total_trs > 0:
-        confounds_data = confounds_data.iloc[:args.total_trs, :]
-        print(f" {len(confounds_data.index)} x {len(confounds_data.columns)}  via '--total-trs'")
-
     print("Read [{} TRs x {} regressors] confounds, writing [{} x {}]".format(
         full_shape[0], full_shape[1],
         confounds_data.shape[0], confounds_data.shape[1]
     ))
     if args.force or not os.path.isfile(args.output):
         os.makedirs(pathlib.Path(args.output).parents[0], exist_ok=True)
-        confounds_data.to_csv(args.output, sep="\t", index=False)
+        confounds_data.fillna(0.0).to_csv(
+            args.output, sep="\t", float_format='%.6f', index=False
+        )
 
 
 """ And finally, the interface components
@@ -148,10 +167,12 @@ def get_arguments():
         description="\n".join([
             "Extract regressor columns from confounds file.",
             "",
+            "--level csf_wm   : csf_wm",
             "--level basic   : fd + 6 tCompCors, 6 aCompCors, and 6 motion",
             "--level curious : <basic> + global + csf + whitematter",
             "--level motion  : defaults to 6 motion parameters",
             "                : --motion {6,12,18,24} increases that",
+            "--motion N      : adds {6,12,18,24} motion vectors to --level",
             "--scrub         : adds however many frames have excess motion",
         ])
     )
@@ -166,11 +187,11 @@ def get_arguments():
     parser.add_argument(
         "-l", "--level", default="basic",
         help="A level label specifying which regressor columns to include"
-             "('motion', 'basic', 'curious')",
+             "('csfwm', 'motion', 'basic', 'curious')",
     )
     parser.add_argument(
         "-m", "--motion", type=int, default=6,
-        help="How many motion degrees of freedom to regress (6, 9, 12, 15)",
+        help="How many motion degrees of freedom to regress (6, 12, 18, 24)",
     )
     parser.add_argument(
         "-s", "--scrub", action="store_true",
