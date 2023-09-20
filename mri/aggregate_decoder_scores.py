@@ -200,12 +200,12 @@ def get_subject_data(subject_id, demographics):
 
     return {
         "subject": subject_id,
-        "age": demographics.get('age', "na"),
-        "sex": demographics.get('sex', "na"),
-        "suicidality": demographics.get('suicidality', "na"),
-        "race_n": demographics.get('race_n', "na"),
-        "race_dich": demographics.get('race_dich', "na"),
-        "ethnicity": demographics.get('ethnicity', "na"),
+        "age": demographics.get('age', "-1"),
+        "sex": demographics.get('sex', "-1"),
+        "suicidality": demographics.get('suicidality', "-1"),
+        "race_n": demographics.get('race_n', "-1"),
+        "race_dich": demographics.get('race_dich', "-1"),
+        "ethnicity": demographics.get('ethnicity', "-1"),
     }
 
 
@@ -333,7 +333,7 @@ def main(args):
     # Scrape data from all files, categorizing it in memory.
     blocks = {}
     scores = {}
-    for subject_dir in sorted(args.input_dir.glob("sub-U*")):
+    for subject_dir in sorted(args.input_dir.glob("sub-U*783")):
         subject = get_val_from_key(subject_dir.name, "sub")
         if subject in demographics.index:
             subject_dict = get_subject_data(
@@ -358,7 +358,6 @@ def main(args):
 
             for score_file in run_dir.glob("decoding/all_trs_*_scores.tsv"):
                 # See if we are interested in this particular decoder's output.
-                dec_filename = score_file.name
                 dec_name, dec_weighted = get_decoder_name(score_file.name)
                 if args.decoder_names is not None:
                     if dec_name not in args.decoder_names:
