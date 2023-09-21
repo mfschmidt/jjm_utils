@@ -101,7 +101,7 @@ def get_fd(subject, run, args):
     """
 
     confound_files = list((args.fmriprep_path / f"sub-{subject}").glob(
-        f"**/sub-{subject}*task-{args.task}_run-{run}_"
+        f"**/sub-{subject}*task-{args.task}_run-*{run}_"
         "desc-confounds_timeseries.tsv"
     ))
     if len(confound_files) > 0:
