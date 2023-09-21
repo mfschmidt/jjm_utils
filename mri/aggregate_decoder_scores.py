@@ -223,8 +223,11 @@ def get_blocks_from_run(subject, run_dir, args):
 
     # Get steady-state cropped movement confounds
     max_fd, num_fd_outliers = get_fd(subject, run, args)
-    if args.verbose:
+    if (max_fd is not None) and (num_fd_outliers is not None) and args.verbose:
         print(f"max FD {max_fd:0.2f} with {num_fd_outliers:0d} outlier TRs")
+
+    if (timing_data is None) or (max_fd is None) or (num_fd_outliers is None):
+        return {}
 
     # And drop all but the four 'memory' events
     memories = timing_data[timing_data['trial_type'] == 'memory']
@@ -345,6 +348,9 @@ def main(args):
             )
         for run_dir in sorted(subject_dir.glob(f"task-{args.task}/run-*")):
             some_blocks = get_blocks_from_run(subject, run_dir, args)
+            if len(some_blocks) == 0:
+                print(f"MISSING: {str(run_dir)}")
+                continue
             for b_key, block in some_blocks.items():
                 # Add subject demographic data to the block
                 block.update(subject_dict)
