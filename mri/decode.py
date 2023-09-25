@@ -206,7 +206,7 @@ def remove_motion(data, args, scale='zscore', method='manual'):
         confounds = pd.read_csv(args.confounds, sep='\t')
     elif args.confounds.name.endswith(".par"):
         # If motion correction was done by FSL Feat, double-spaces
-        confounds = pd.read_csv(args.confounds, sep='  ', header=None)
+        confounds = pd.read_csv(args.confounds, sep=r'\s+', header=None)
     confounds['bias'] = 1.0
 
     # One way is to do this with nilearn, in one line:
