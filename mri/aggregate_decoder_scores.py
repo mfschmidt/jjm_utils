@@ -123,7 +123,7 @@ def get_fd(subject, run, args):
         ] if f.exists()]
         if len(confound_files) > 0:
             df = pd.read_csv(confound_files[0], index_col=None, header=None)
-            fd = df[args.steady_state_outliers - 1:]
+            fd = df[args.steady_state_outliers - 1:].values
             return fd.max(), len(fd[fd > args.motion_threshold])
         else:
             print(f"Confounds for {subject}/task-{args.task}/run-{run} "
