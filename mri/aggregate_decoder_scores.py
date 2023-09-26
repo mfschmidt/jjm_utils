@@ -119,6 +119,10 @@ def get_fd(subject, run, args):
             (args.fmriprep_path / f"sub-{subject}").glob(
                 f"**/prefiltered_func_data_mcf_rel.rms"
             )
+        ) + list(
+            (args.fmriprep_path / subject).glob(
+                f"**/prefiltered_func_data_mcf_rel.rms"
+            )
         )
         if len(confound_files) > 0:
             df = pd.read_csv(confound_files[0], index_col=None, header=None)
