@@ -100,17 +100,47 @@ def get_fd(subject, run, args):
     """ Find the uncropped confounds file and extract cropped FD.
     """
 
+    # We assume the confounds will be in an fMRIPrep directory,
+    # but will also support the feat-based par file if that's the only choice.
     confound_files = list((args.fmriprep_path / f"sub-{subject}").glob(
         f"**/sub-{subject}*task-{args.task}_run-*{run}_"
         "desc-confounds_timeseries.tsv"
     ))
     if len(confound_files) > 0:
-        df = pd.read_csv(confound_files[0], index_col=None, sep='\t')
+        df = pd.read_csv(confound_files[0],
+                         index_col=None, sep='\t')
         fd = df['framewise_displacement'][args.steady_state_outliers:]
         return fd.max(), len(fd[fd > args.motion_threshold])
     else:
-        print(f"Confounds for {subject}/{args.task}/{run} could not be found.")
-        return None, None
+        confound_files = list(
+            (args.fmriprep_path / f"sub-{subject}").glob(
+                f"**/prefiltered_func_data_mcf_rel.rms"
+            )
+        )
+        if len(confound_files) > 0:
+            df = pd.read_csv(confound_files[0], index_col=None, header=None)
+            fd = df[args.steady_state_outliers - 1:]
+            return fd.max(), len(fd[fd > args.motion_threshold])
+        else:
+            print(f"Confounds for {subject}/task-{args.task}/run-{run} "
+                  "could not be found.")
+            return 0.0, 0
+
+
+def calc_fd(row):
+    """ From a row of six displacement parameters, summarize them.
+
+        This is based on the same Power, 2012 calculation used by fmriprep.
+        But it doesn't match fMRIPrep, so shouldn't yet be used.
+    """
+    return np.sum(np.abs(np.array([
+        row['trans_x'],
+        row['trans_y'],
+        row['trans_z'],
+        50.0 * np.sin(row["rot_x"] * 180.0 / np.pi),
+        50.0 * np.sin(row["rot_y"] * 180.0 / np.pi),
+        50.0 * np.sin(row["rot_z"] * 180.0 / np.pi),
+    ])))
 
 
 def get_run_events(run_dir, args):
