@@ -93,6 +93,9 @@ def get_val_from_key(filename, key):
     match = re.search(rf"{key}-([0-9A-Za-z]+)", filename, re.IGNORECASE)
     if match:
         return match.group(1)
+    # Override for old-style subject-named directories without "sub-" prefix
+    if key == "sub" and filename.startswith("U"):
+        return filename
     return None
 
 
@@ -366,7 +369,10 @@ def main(args):
     # Scrape data from all files, categorizing it in memory.
     blocks = {}
     scores = {}
-    for subject_dir in sorted(args.input_dir.glob("sub-U*")):
+    for subject_dir in sorted(
+            list(args.input_dir.glob("sub-U*")) +
+            list(args.input_dir.glob("U*"))
+    ):
         subject = get_val_from_key(subject_dir.name, "sub")
         if subject in demographics.index:
             subject_dict = get_subject_data(
