@@ -104,7 +104,7 @@ def get_fd(subject, run, args):
     """
 
     # We assume the confounds will be in an fMRIPrep directory,
-    # but will also support the feat-based par file if that's the only choice.
+    # but will also support the feat-based rms file if that's the only choice.
     confound_files = list((args.fmriprep_path / f"sub-{subject}").glob(
         f"**/sub-{subject}*task-{args.task}_run-*{run}_"
         "desc-confounds_timeseries.tsv"
@@ -115,15 +115,12 @@ def get_fd(subject, run, args):
         fd = df['framewise_displacement'][args.steady_state_outliers:]
         return fd.max(), len(fd[fd > args.motion_threshold])
     else:
-        confound_files = list(
-            (args.fmriprep_path / f"sub-{subject}").glob(
-                f"**/prefiltered_func_data_mcf_rel.rms"
-            )
-        ) + list(
-            (args.fmriprep_path / subject).glob(
-                f"**/prefiltered_func_data_mcf_rel.rms"
-            )
-        )
+        confound_files = [f for f in [
+            args.fmriprep_path / f"{subject}/mem/run{run}/preproc.feat/mc" /
+            "prefiltered_func_data_mcf_rel.rms",
+            args.fmriprep_path / f"{subject}/mems/run{run}/preproc.feat/mc" /
+            "prefiltered_func_data_mcf_rel.rms",
+        ] if f.exists()]
         if len(confound_files) > 0:
             df = pd.read_csv(confound_files[0], index_col=None, header=None)
             fd = df[args.steady_state_outliers - 1:]
