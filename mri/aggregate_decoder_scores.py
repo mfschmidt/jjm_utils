@@ -472,12 +472,38 @@ def main(args):
                         result[score_str] = scores[per_id][dec_name][dec_wt][tr]
                 results.append(result)
 
+    # Put all data into a dataframe, and finalize the data
+    final_results = pd.DataFrame(results)
+    # Create a unique identifier for each period.
+    final_results["pid"] = final_results.apply(
+        lambda r: f"{r['subject']}_{r['run']}_{r['period']}_{r['instruct'][0]}",
+        axis=1,
+    )
+    # Then change the period to indicate task-dependent rather than absolute
+    final_results['a_period'] = final_results['period'].copy()
+    final_results['period'] = 0
+    sri_idx = final_results.sort_values(
+        ["subject", "run", "instruct"]
+    ).groupby(
+        ["subject", "run", "instruct"]
+    )["pid"].count().index
+    for subject, run, instruct in sri_idx:
+        sri_mask = (
+            (final_results["subject"] == subject)
+            & (final_results["run"] == run)
+            & (final_results["instruct"] == instruct)
+        )
+        periods = sorted(final_results[sri_mask]["a_period"].unique())
+        for i, period in enumerate(periods):
+            this_period_mask = sri_mask & (final_results["a_period"] == period)
+            final_results.loc[this_period_mask, "period"] = i + 1
+
     # Sort and order results, without changing any data
-    final_results = pd.DataFrame(results).sort_values(
-        ["subject", "run", "period", "decoder", ]
+    final_results = final_results.sort_values(
+        ["pid", "decoder", ]
     )[[
         'subject', 'age', 'sex', 'suicidality', 'race_n', 'race_dich',
-        'ethnicity', 'task', 'run', 'instruct', 'period',
+        'ethnicity', 'task', 'run', 'instruct', 'period', 'pid',
         'max_fd', 'fd_outliers', 'feel_bad', 'vividness',
         'tr_from_scan_start', 'tr_from_memory', 'tr_from_instruct',
         'decoder', 'weighted_score', 'average_score',
