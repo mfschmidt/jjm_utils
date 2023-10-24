@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 import argparse
 from statistics import correlation
+import numpy as np
 
 import nibabel as nib
 from nilearn import image
@@ -104,30 +105,44 @@ def main(args):
     img_a, img_a_voxels = get_voxels(args.image_a)
     img_b, img_b_voxels = get_voxels(args.image_b)
     mask_img, mask_voxels = get_voxels(args.mask)
+
+    if img_a_voxels is None:
+        print(f"could not load {str(args.image_a)}")
+    if img_b_voxels is None:
+        print(f"could not load {str(args.image_b)}")
+    if mask_voxels is None and args.mask is not None:
+        print(f"could not load {str(args.mask)}")
+
     if len(img_a_voxels) != len(img_b_voxels):
         print("Images are not the same size.")
         print(f"Image a is {img_a.shape}.")
         print(f"Image b is {img_b.shape}.")
         sys.exit(1)
-    if len(mask_voxels) != len(img_a_voxels):
+    tests = [("Whole image", img_a_voxels, img_b_voxels),]
+    if (mask_voxels is not None) and len(mask_voxels) != len(img_a_voxels):
         print("The mask is not the same size as the images.")
         print(f"Images are {img_a.shape}.")
         print(f"The mask is {mask_img.shape}.")
         sys.exit(1)
 
     # Set up masked vectors
-    img_a_masked_voxels = img_a_voxels[mask_voxels != 0.0]
-    img_b_masked_voxels = img_b_voxels[mask_voxels != 0.0]
+    if mask_voxels is not None:
+        img_a_masked_voxels = img_a_voxels[mask_voxels != 0.0]
+        img_b_masked_voxels = img_b_voxels[mask_voxels != 0.0]
+        tests.append(("Within mask", img_a_masked_voxels, img_b_masked_voxels))
 
     # Compare the images
-    for label, vector_a, vector_b in [
-        ("Whole image", img_a_voxels, img_b_voxels),
-        ("Within mask", img_a_masked_voxels, img_b_masked_voxels),
-    ]:
+    for label, vector_a, vector_b in tests:
         r = correlation(vector_a, vector_b)
+        identical_str = ""
+        if r > 0.9999:
+            if np.array_equal(vector_a, vector_b):
+                identical_str = " (identical)"
+            else:
+                identical_str = " (not identical)"
         print(
             f"{label}: {len(vector_a):>7,} voxels - "
-            f"         Pearson r == {r:0.4f}"
+            f"         Pearson r == {r:0.4f}{identical_str}"
         )
 
         vector_a_1d = vector_a.reshape(1, -1)
