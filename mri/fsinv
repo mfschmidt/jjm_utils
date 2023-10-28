@@ -40,58 +40,66 @@ if [[ -e "$1" ]]; then
   
   # Hippocampus and Amygdala Subfield Labels
   HA_COUNT=0
-  T1sL=$(2>/dev/null ls -1 ${1}/mri/lh.hippoAmygLabels-T1.*.mgz)
+  T1sL=$(2>/dev/null ls -1 "${1}"/mri/lh.hippoAmygLabels-T1.*.mgz)
   if [[ "${T1sL}" != "" ]]; then
-    HA_COUNT=$(( $HA_COUNT + 1 ))
+    HA_COUNT=$(( HA_COUNT + 1 ))
   fi
-  T1sR=$(2>/dev/null ls -1 ${1}/mri/rh.hippoAmygLabels-T1.*.mgz)
+  T1sR=$(2>/dev/null ls -1 "${1}"/mri/rh.hippoAmygLabels-T1.*.mgz)
   if [[ "${T1sR}" != "" ]]; then
-    HA_COUNT=$(( $HA_COUNT + 1 ))
+    HA_COUNT=$(( HA_COUNT + 1 ))
   fi
-  T2sL=$(2>/dev/null ls -1 ${1}/mri/lh.hippoAmygLabels-T1-T2.*.mgz)
+  T2sL=$(2>/dev/null ls -1 "${1}"/mri/lh.hippoAmygLabels-T1-T2.*.mgz)
   if [[ "${T2sL}" != "" ]]; then
-    HA_COUNT=$(( $HA_COUNT + 1 ))
+    HA_COUNT=$(( HA_COUNT + 1 ))
   fi
-  T2sR=$(2>/dev/null ls -1 ${1}/mri/rh.hippoAmygLabels-T1-T2.*.mgz)
+  T2sR=$(2>/dev/null ls -1 "${1}"/mri/rh.hippoAmygLabels-T1-T2.*.mgz)
   if [[ "${T2sR}" != "" ]]; then
-    HA_COUNT=$(( $HA_COUNT + 1 ))
+    HA_COUNT=$(( HA_COUNT + 1 ))
   fi
   HA="${HA_COUNT}HA"
 
   # Brainstem Nuclei Labels
-  BSs=$(2>/dev/null ls -1 ${1}/mri/brainstemSsLabels.*.mgz)
+  BSs=$(2>/dev/null ls -1 "${1}"/mri/brainstemSsLabels.*.mgz)
   if [[ "${BSs}" != "" ]]; then
     BS="BSN"; else BS="   "
   fi
 
   # Thalamic Nuclei Labels
-  THs=$(2>/dev/null ls -1 ${1}/mri/ThalamicNuclei.*.mgz)
+  THs=$(2>/dev/null ls -1 "${1}"/mri/ThalamicNuclei.*.mgz)
   if [[ "${THs}" != "" ]]; then
     TH="ThN"; else TH="   "
   fi
 
   # The date of completion
   if [[ -e "${1}/scripts/recon-all.done" ]]; then
-    TIMEA=$(grep START_TIME "${1}/scripts/recon-all.done")
-    TIMEA=${TIMEA:11}
-    TIMEB=$(grep END_TIME "${1}/scripts/recon-all.done")
-    TIMEB=${TIMEB:9}
-    DATE=$(date --date="${TIMEB}" "+%Y-%m-%d %H:%M")
+    TIME_A=$(grep START_TIME "${1}/scripts/recon-all.done")
+    TIME_A=${TIME_A:11}
+    TIME_B=$(grep END_TIME "${1}/scripts/recon-all.done")
+    TIME_B=${TIME_B:9}
+    DATE=$(date --date="${TIME_B}" "+%Y-%m-%d %H:%M")
   else
     DATE="unfinished"
   fi
 
+  # The version run
+  if [[ -e "${1}/scripts/recon-all.done" ]]; then
+    VERSION=$(grep VERSION "${1}/scripts/recon-all.done")
+    VERSION=${VERSION:8:5}
+  else
+    VERSION="N/A  "
+  fi
+
   # Calculate some metadata
-  COUNT=$(ls -1R ${1} | wc -l)
-  SIZE=$(du -sh ${1})
+  COUNT=$(find "${1}" -type f | wc -l)
+  SIZE=$(du -sh "${1}")
 
   REALPATH=$(realpath "${1}")
   printf '%-20s: ' "${REALPATH##*/}"
-  printf '%4s in %3s files | ' ${SIZE%%$'\t'*} ${COUNT}
+  printf 'v%s : ' "${VERSION}"
+  printf '%4s in %3s files | ' "${SIZE%%$'\t'*}" "${COUNT}"
   echo "${T1}  ${T2}  ${CTX}  ${SUB}  ${SUR}  ${HA}  ${BS}  ${TH} | on ${DATE}"
 else
   REALPATH=$(realpath "${1}")
   printf '%-20s: ' "${REALPATH##*/}"
   echo "N/A"
 fi
-
