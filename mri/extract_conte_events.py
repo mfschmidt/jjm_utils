@@ -1009,6 +1009,9 @@ def finalize_dataframe(df, offsets, verbose=False):
                     df.loc[i, 'duration'] = 10.000
                 if (duration >= 19.99) and (duration <= 27.50):
                     df.loc[i, 'duration'] = 20.000
+            if df.loc[i, 'trial_type'] == "question":
+                if duration > 3.000:
+                    df.loc[i, 'duration'] = 3.000
 
         # In the 6-second gaps where the Arrows directions go, add that block
         if (
@@ -1064,7 +1067,7 @@ def finalize_dataframe(df, offsets, verbose=False):
         # Center each 'onset' to its run's start time.
         df = df.rename(columns={'onset': 'original_onset'})
         df['onset'] = df['original_onset'].apply(
-            lambda onset: onset - sync_df[sync_df['t'] < onset].max()[0]
+            lambda onset: onset - sync_df[sync_df['t'] < onset].max().iloc[0]
         )
         df['onset'] = df['onset'].fillna(0.0)
         df['run'] = df['original_onset'].apply(
