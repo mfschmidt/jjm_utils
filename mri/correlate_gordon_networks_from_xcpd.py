@@ -210,7 +210,7 @@ def build_subject_correlations(args):
     )
     ts_data.to_csv(
         args.output_path / f"sub-{args.participant}" / ts_file_name,
-        sep='\t',
+        sep='\t', index=False
     )
 
     # Correlate each column with each other
