@@ -140,9 +140,10 @@ def threshold_mask(fake_t1w_data, inv2, threshold=100):
     new_data = fake_t1w_data.copy()
     new_data[inv2 < threshold] = -0.50
     # The following is tempting and seemingly elegant,
-    # but inv2 values range from 0 to 1500; t1w data here range from -0.5 to 0.5,
+    # but inv2 values range from 0 to 1500;
+    # t1w data here range from -0.5 to 0.5,
     # so will always be lower than inv2, avoiding any change whatsoever.
-    # new_data[inv2 < threshold] = np.minimum(fake_t1w_data, inv2)[inv2 < threshold]
+    # new_data[inv2 < threshold] = np.min(fake_t1w_data, inv2)[inv2 < threshold]
     return new_data
 
 
@@ -266,13 +267,15 @@ def robust_combination(mp2rage, regularization=1, verbose=True):
     else:
         phase_sensitive_img = retype_image(
             nib.Nifti1Image(
-                masked_phase_sensitive_robust, img_uni.affine, header=img_uni.header
+                masked_phase_sensitive_robust,
+                img_uni.affine, header=img_uni.header
             ),
             datatype=np.float32,
         )
 
     if verbose:
-        report_image_stats(phase_sensitive_img, "Final phase-sensitive robust fake T1w")
+        report_image_stats(phase_sensitive_img,
+                           "Final phase-sensitive robust fake T1w")
 
     return phase_sensitive_img
 

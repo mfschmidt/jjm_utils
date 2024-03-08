@@ -31,35 +31,23 @@ def get_arguments():
     """ Parse command line arguments """
 
     parser = argparse.ArgumentParser(
-        description="Describe the point of this script.",
+        description="Extract ratings of images in the Conte1 data.",
     )
     parser.add_argument(
         "input_path",
-        help="a required path or a file or whatever",
+        help="the path containing BIDS-compliant rawdata",
     )
     parser.add_argument(
         "output_path",
-        help="The output path for writing",
+        help="The output path for writing a tsv file",
     )
     parser.add_argument(
         "--participant", default="all",
-        help="The subject/participant to work with",
+        help="The subject/participant to work with, leave blank for all",
     )
     parser.add_argument(
         "--exclude", nargs="+",
         help="Subjects to avoid looking through",
-    )
-    parser.add_argument(
-        "-o", "--option",
-        help="change some other optional option",
-    )
-    parser.add_argument(
-        "--force", action="store_true",
-        help="Run all tasks, even if it means overwriting existing data",
-    )
-    parser.add_argument(
-        "--dry-run", action="store_true",
-        help="Run no tasks, just report on what would be run without this flag",
     )
     parser.add_argument(
         "--verbose", action="store_true",
@@ -341,7 +329,7 @@ def main(args):
     print(
         f"Combining {len(trials)} records from {subject_count} "
         f"participants and writing to "
-        f"{str(args.output_path / 'conte_one_ratings_by_trial.csv')}"
+        f"{str(args.output_path / 'conte_one_image_ratings_by_trial.csv')}"
     )
     # Create a dataframe, and keep columns consistently ordered.
     data = pd.DataFrame(trials)[[
@@ -350,6 +338,8 @@ def main(args):
     ]]
 
     # As of 5/19/2023, with 58 subjects, data have 5220 trials/rows
+    # As of 09/30/2023, with 77 subjects, data have 6900 rows.
+    # As of 10/16/2023, with 79 subjects, data have 7080 rows.
 
     # Break down by image
     # Calculate the mean Look rating for each image
