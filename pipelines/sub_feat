@@ -18,7 +18,11 @@ fi
 
 # How many cores shall we allocate for this job?
 # feat just uses 1 for now
-CORES=4
+if [[ "$2" == "" ]]; then
+  CORES=4
+else
+  CORES=$2
+fi
 
 # Write a new sbatch script
 
@@ -28,9 +32,11 @@ FSF_SHORT="${FSF_FILE%%.*}"
 SCRIPT=${FSF_PATH}/${FSF_SHORT}.sbatch.sh
 
 if [[ $FSF =~ (U[0-9]+) ]]; then
-        SUB=${BASH_REMATCH[1]}
+  SUB=${BASH_REMATCH[1]}
+elif [[ $FSF =~ (cope[0-9]+) ]]; then
+  SUB=${BASH_REMATCH[1]}
 else
-        SUB=_NA_
+  SUB=_NA_
 fi
 
 echo "#!/bin/bash"                                          > "$SCRIPT"
