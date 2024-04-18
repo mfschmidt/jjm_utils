@@ -12,37 +12,47 @@ from collections import namedtuple
 
 
 # Trigger printing in red to highlight problems
-red_on = '\033[91m'
-green_on = '\033[92m'
-color_off = '\033[0m'
+red_on = "\033[91m"
+green_on = "\033[92m"
+color_off = "\033[0m"
 
 # Store acquisition features in one clean object per acquisition.
 Acquisition = namedtuple(
-    'Acquisition',
-    " ".join([
-        'scan_type', 'path', 'direction', 'run', 'task', 'modality',
-        'SeriesNumber', 'TaskName', 'SeriesDescription', 'AcquisitionTime',
-        'PhaseEncodingDirection', 'IntendedFor', 'EventsFile'
-    ])
+    "Acquisition",
+    [
+        "scan_type",
+        "path",
+        "direction",
+        "run",
+        "task",
+        "modality",
+        "SeriesNumber",
+        "TaskName",
+        "SeriesDescription",
+        "AcquisitionTime",
+        "PhaseEncodingDirection",
+        "IntendedFor",
+        "EventsFile",
+    ],
 )
 
 
-def gather_acquisitions(session_path, scan_type='all'):
-    """ From the session_path specified, collect data about field maps.
-        Return the list of acquisitions as named tuples.
+def gather_acquisitions(session_path, scan_type="all"):
+    """From the session_path specified, collect data about field maps.
+    Return the list of acquisitions as named tuples.
     """
 
     # Find the files to look into, ignoring any post-added events files
-    if scan_type == 'all':
+    if scan_type == "all":
         json_files = [
-            f for f
-            in pathlib.Path(session_path).glob("*/sub-*.json")
+            f
+            for f in pathlib.Path(session_path).glob("*/sub-*.json")
             if "events" not in f.name
         ]
     else:
         json_files = [
-            f for f
-            in pathlib.Path(session_path).glob(scan_type + "/sub-*.json")
+            f
+            for f in pathlib.Path(session_path).glob(scan_type + "/sub-*.json")
             if "events" not in f.name
         ]
 
@@ -60,34 +70,40 @@ def gather_acquisitions(session_path, scan_type='all'):
             events_filename = "NONEXISTENT_FILE.NOT_TO_BE_FOUND"
 
         metadata = json.load(open(file, "r"))
-        acquisitions.append(Acquisition(
-            scan_type=file.parent.name,
-            path=file,
-            direction=dir_match.group(1) if dir_match else None,
-            run=int(run_match.group(1)) if run_match else None,
-            task=task_match.group(1) if task_match else None,
-            modality=modality_match.group(1) if modality_match else None,
-            SeriesNumber=metadata.get('SeriesNumber', None),
-            TaskName=metadata.get("TaskName", ""),
-            SeriesDescription=metadata.get("SeriesDescription", ""),
-            AcquisitionTime=datetime.strptime(
-                metadata.get('AcquisitionTime', "00:00:00.000000"),
-                "%H:%M:%S.%f"
-            ),
-            PhaseEncodingDirection=metadata.get('PhaseEncodingDirection', None),
-            IntendedFor=[
-                file.parent.parent.parent / p
-                for p in metadata.get('IntendedFor', [])
-            ],
-            EventsFile=(file.parent / events_filename).exists(),
-        ))
+        intended_files = metadata.get("IntendedFor", [])
+        if not isinstance(intended_files, list):
+            intended_files = [intended_files, ]
+
+        acquisitions.append(
+            Acquisition(
+                scan_type=file.parent.name,
+                path=file,
+                direction=dir_match.group(1) if dir_match else None,
+                run=int(run_match.group(1)) if run_match else None,
+                task=task_match.group(1) if task_match else None,
+                modality=modality_match.group(1) if modality_match else None,
+                SeriesNumber=metadata.get("SeriesNumber", None),
+                TaskName=metadata.get("TaskName", ""),
+                SeriesDescription=metadata.get("SeriesDescription", ""),
+                AcquisitionTime=datetime.strptime(
+                    metadata.get("AcquisitionTime", "00:00:00.000000"),
+                    "%H:%M:%S.%f"
+                ),
+                PhaseEncodingDirection=metadata.get("PhaseEncodingDirection",
+                                                    None),
+                IntendedFor=[
+                    (file.parent.parent.parent / p) for p in intended_files
+                ],
+                EventsFile=(file.parent / events_filename).exists(),
+            )
+        )
 
     return acquisitions
 
 
 def find_field_map_for(func_file, field_maps):
-    """ For a given file, search for the field maps intended for it.
-        Return a tuple with (how many maps, the string to print)
+    """For a given file, search for the field maps intended for it.
+    Return a tuple with (how many maps, the string to print)
     """
 
     found = []
@@ -97,37 +113,33 @@ def find_field_map_for(func_file, field_maps):
                 if func_acq.name == func_file:
                     found.append(f)
     if len(found) == 0:
-        return (
-            len(found),
-            f"{red_on}no fmaps{color_off}"
-        )
+        return len(found), f"{red_on}no fmaps{color_off}"
     if len(found) == 1:
         run_str = f"{found[0].run:02d}" if found[0].run else "01"
-        return (
-            len(found),
-            f"{red_on}{found[0].direction}-{run_str}{color_off}"
-        )
+        # funcs need two fieldmaps, but dwi can sometimes only need one.
+        hi_lite = red_on
+        for int_for in found[0].IntendedFor:
+            if "dwi" in int_for.name:
+                hi_lite = green_on
+        return len(found), f"{hi_lite}{found[0].direction}-{run_str}{color_off}"
     elif len(found) > 2:
-        return (
-            len(found),
-            f"{red_on}{len(found)} fmaps!{color_off}"
-        )
+        return len(found), f"{red_on}{len(found)} fmaps!{color_off}"
     else:
         # print([(f.direction, f.run) for f in found])
         run_str0 = f"{found[0].run:02d}" if found[0].run else "01"
         run_str1 = f"{found[1].run:02d}" if found[1].run else "01"
         return (
             len(found),
-            f"{green_on}" +
-            f"{found[0].direction}-{run_str0}," +
-            f"{found[1].direction}-{run_str1}" +
-            f"{color_off}"
+            f"{green_on}"
+            + f"{found[0].direction}-{run_str0},"
+            + f"{found[1].direction}-{run_str1}"
+            + f"{color_off}",
         )
 
 
 def validate_intended_fors(fmap_acquisition):
-    """ In a given field map json, return number of total, matching,
-        and missing funcs, and a string to report them.
+    """In a given field map json, return number of total, matching,
+    and missing funcs, and a string to report them.
     """
 
     # IntendedFor paths were already read and saved.
@@ -157,8 +169,7 @@ def validate_intended_fors(fmap_acquisition):
 
 
 def rename_misordered(tasks):
-    """ Rename files in tasks, musical chairs style, without overwriting any.
-    """
+    """Rename files in tasks, musical chairs style, without overwriting any."""
 
     # For each pair, the "to" file probably already exists.
     # We use two passes to name them all temporarily, then name them back.
@@ -169,27 +180,30 @@ def rename_misordered(tasks):
         task["temp"] = path_a.parent / f"tmp_{i:02d}.tmp"
         if path_a is not None and path_a.exists():
             # print(path_a.name, " -> ", task.get('temp').name)
-            path_a.rename(task.get('temp'))
+            path_a.rename(task.get("temp"))
 
     # Pass two, refill the deck by properly naming tmp files.
     for i, task in enumerate(tasks):
         path_a = task.get("from", None)
-        temp = task.get('temp')
+        temp = task.get("temp")
         path_b = task.get("to")
         if path_b.exists():
-            print(f"{red_on}Error:{color_off} "
-                  f"'{str(path_b)}' should have been renamed.")
+            print(
+                f"{red_on}Error:{color_off} "
+                f"'{str(path_b)}' should have been renamed."
+            )
         if temp.exists() and not path_b.exists():
             # print(temp.name, "->", path_b.name)
             temp.rename(path_b)
-            print(f"{green_on}"
-                  f"\u2714 {path_a.name} \u279e {path_b.name}"
-                  f"{color_off}")
+            print(
+                f"{green_on}"
+                f"\u2714 {path_a.name} \u279e {path_b.name}"
+                f"{color_off}"
+            )
 
 
 def rename_jsonnews(tasks):
-    """ Rename files in tasks, and these should overwrite original jsons.
-    """
+    """Rename files in tasks, and these should overwrite original jsons."""
 
     # For each pair, the "to" file probably already exists.
     # We use two passes to name them all temporarily, then name them back.
@@ -198,55 +212,63 @@ def rename_jsonnews(tasks):
     for i, task in enumerate(tasks):
         if task.get("good_data").exists():
             task.get("good_data").replace(task.get("good_name"))
-            print(f"{green_on}"
-                  f"\u2714 {task.get('good_data').name} "
-                  f"\u279e {task.get('good_name').name}"
-                  f"{color_off}")
+            print(
+                f"{green_on}"
+                f"\u2714 {task.get('good_data').name} "
+                f"\u279e {task.get('good_name').name}"
+                f"{color_off}"
+            )
 
 
 def fill_in_tasknames(items):
-    """ Each item has a file and a TaskName for insertion; insert them.
-    """
+    """Each item has a file and a TaskName for insertion; insert them."""
 
     for item in items:
-        if item.get('file', None) is None:
+        if item.get("file", None) is None:
             print(f"{red_on}\u2718 No json file{color_off}")
-        elif item.get('file').exists():
+        elif item.get("file").exists():
             data = json.load(open(item.get("file"), "r"))
             data["TaskName"] = item.get("TaskName")
             json.dump(data, open(item.get("file"), "w"), indent=4)
-            print(f"{green_on}\u2714 "
-                  f"Wrote '\"TaskName\": \"{item.get('TaskName')}\"' "
-                  f"\u279e {item.get('file')}"
-                  f"{color_off}")
+            print(
+                f"{green_on}\u2714 "
+                f"Wrote '\"TaskName\": \"{item.get('TaskName')}\"' "
+                f"\u279e {item.get('file')}"
+                f"{color_off}"
+            )
         else:
-            print(f"{red_on}\u2718 "
-                  f"File '{item.get('file')}' doesn't exist.{color_off}")
+            print(
+                f"{red_on}\u2718 "
+                f"File '{item.get('file')}' doesn't exist.{color_off}"
+            )
 
 
 def fill_in_peds(items):
-    """ Each item has a file and a TaskName for insertion; insert them.
-    """
+    """Each item has a file and a TaskName for insertion; insert them."""
 
     for item in items:
-        if item.get('file', None) is None:
+        if item.get("file", None) is None:
             print(f"{red_on}\u2718 No json file{color_off}")
-        elif item.get('file').exists():
+        elif item.get("file").exists():
             data = json.load(open(item.get("file"), "r"))
             data["PhaseEncodingDirection"] = item.get("PhaseEncodingDirection")
             json.dump(data, open(item.get("file"), "w"), indent=4)
-            print(f"{green_on}\u2714 "
-                  f"Wrote '\"PhaseEncodingDirection\": \"{item.get('PhaseEncodingDirection')}\"' "
-                  f"\u279e {item.get('file')}"
-                  f"{color_off}")
+            print(
+                f"{green_on}\u2714 "
+                f"Wrote '\"PhaseEncodingDirection\": "
+                f"\"{item.get('PhaseEncodingDirection')}\"' "
+                f"\u279e {item.get('file')}"
+                f"{color_off}"
+            )
         else:
-            print(f"{red_on}\u2718 "
-                  f"File '{item.get('file')}' doesn't exist.{color_off}")
+            print(
+                f"{red_on}\u2718 "
+                f"File '{item.get('file')}' doesn't exist.{color_off}"
+            )
 
 
 def get_arguments():
-    """ Define and parse command line arguments.
-    """
+    """Define and parse command line arguments."""
 
     parser = argparse.ArgumentParser(
         description="""
@@ -262,27 +284,38 @@ def get_arguments():
         help="The path to data from one series",
     )
     parser.add_argument(
-        "-m", "--modality", default="all",
+        "-m",
+        "--modality",
+        default="all",
         help="Report on just this modality (anat,func,fmap,dwi)",
     )
     parser.add_argument(
-        "-s", "--sequence-errors", action="store_true",
+        "-s",
+        "--sequence-errors",
+        action="store_true",
         help="set to output number of sequence errors",
     )
     parser.add_argument(
-        "-i", "--intended-errors", action="store_true",
+        "-i",
+        "--intended-errors",
+        action="store_true",
         help="set to output number of intended errors",
     )
     parser.add_argument(
-        "-t", "--taskname-errors", action="store_true",
+        "-t",
+        "--taskname-errors",
+        action="store_true",
         help="set to output number of taskname errors",
     )
     parser.add_argument(
-        "--fix", action="store_true",
+        "--fix",
+        action="store_true",
         help="Fix the discovered errors.",
     )
     parser.add_argument(
-        "-v", "--verbose", action="store_true",
+        "-v",
+        "--verbose",
+        action="store_true",
         help="set to trigger verbose output",
     )
 
@@ -290,7 +323,7 @@ def get_arguments():
 
 
 def main(args):
-    """ Entry point """
+    """Entry point"""
 
     files_to_rename = []
     tasknames_to_add = []
@@ -301,19 +334,23 @@ def main(args):
         modality_str = args.modality
         if args.modality != "all":
             modality_str = f"just {args.modality}"
-        print("Looking at {}, {}{}.".format(
-            args.path,
-            f"{modality_str} modalities",
-            ", fixing if possible." if args.fix else "",
-        ))
+        print(
+            "Looking at {}, {}{}.".format(
+                args.path,
+                f"{modality_str} modalities",
+                ", fixing if possible." if args.fix else "",
+            )
+        )
 
     # If no flags are specified, nothing is output at all.
     # After the first print above, it makes more sense to
     # output verbose output in the default case.
     # Setting 'i' or 's' prevents this override.
-    if not args.sequence_errors and \
-       not args.intended_errors and \
-       not args.taskname_errors:
+    if (
+        not args.sequence_errors
+        and not args.intended_errors
+        and not args.taskname_errors
+    ):
         args.verbose = True
 
     if not pathlib.Path(args.path).exists():
@@ -321,9 +358,10 @@ def main(args):
         return 1
 
     # Find the files to look into
-    acquisitions = sorted(gather_acquisitions(
-        args.path, args.modality
-    ), key=lambda a: a.SeriesNumber)
+    acquisitions = sorted(
+        gather_acquisitions(args.path, args.modality),
+        key=lambda a: a.SeriesNumber
+    )
 
     # Find out about IntendedFor mappings, too
     field_maps = gather_acquisitions(args.path, "fmap")
@@ -342,64 +380,75 @@ def main(args):
         out_of_order = False
 
         # Runs for each sequence_key should start at 1 and always increase
-        sequence_key = "_".join([
-            "" if acquisition.task is None else acquisition.task,
-            "" if acquisition.direction is None else acquisition.direction,
-            "" if acquisition.modality is None else acquisition.modality,
-        ])
+        sequence_key = "_".join(
+            [
+                "" if acquisition.task is None else acquisition.task,
+                "" if acquisition.direction is None else acquisition.direction,
+                "" if acquisition.modality is None else acquisition.modality,
+            ]
+        )
         expectation = highest_run.get(sequence_key, 0) + 1
         if acquisition.run:
             if acquisition.run != expectation:
                 out_of_order = True
                 num_misordered += 1
                 if args.fix:
-                    new_path = pathlib.Path(str(acquisition.path).replace(
-                        f"run-{acquisition.run:02d}",
-                        f"run-{expectation:02d}",
-                    ))
+                    new_path = pathlib.Path(
+                        str(acquisition.path).replace(
+                            f"run-{acquisition.run:02d}",
+                            f"run-{expectation:02d}",
+                        )
+                    )
                     # Remember to rename the json AND the nii.gz
-                    files_to_rename.append({
-                        "from": acquisition.path,
-                        "to": new_path,
-                    })
-                    files_to_rename.append({
-                        "from": pathlib.Path(
-                            str(acquisition.path).replace(".json", ".nii.gz")
-                        ),
-                        "to": pathlib.Path(
-                            str(new_path).replace(".json", ".nii.gz")
-                        ),
-                    })
+                    files_to_rename.append(
+                        {
+                            "from": acquisition.path,
+                            "to": new_path,
+                        }
+                    )
+                    files_to_rename.append(
+                        {
+                            "from": pathlib.Path(
+                                str(acquisition.path).replace(
+                                    ".json", ".nii.gz"
+                                )
+                            ),
+                            "to": pathlib.Path(
+                                str(new_path).replace(
+                                    ".json", ".nii.gz"
+                                )
+                            ),
+                        }
+                    )
 
         # Describe the func's fmap, if necessary
         intfor_str = ""
-        if acquisition.scan_type == "func":
+        if acquisition.scan_type in ("func", "dwi", ):
             num_fmaps, fmap_str = find_field_map_for(
                 acquisition.path.name.replace(".json", ".nii.gz"),
                 field_maps
             )
             intfor_str = f" ({fmap_str})"
-            if num_fmaps != 2:
+            if num_fmaps not in (1, 2, ):
                 num_fieldmap_problems += 1
 
         # Describe the fmap's IntendedFor, if necessary
+        ped_str = ""
         if acquisition.scan_type == "fmap":
-            num_good, num_bad, fmap_str = validate_intended_fors(
-                acquisition
-            )
+            num_good, num_bad, fmap_str = validate_intended_fors(acquisition)
             intfor_str = f" ({fmap_str})"
             num_fieldmap_problems += num_bad
 
-        # Determine the existence of "PhaseEncodeDirection" in fmaps
-        ped_str = ""
-        if acquisition.scan_type == "fmap":
+            # Determine the existence of "PhaseEncodeDirection" in fmaps
             if acquisition.PhaseEncodingDirection is None:
                 num_phase_problems += 1
                 ped_str = f" ({red_on}no PED{color_off})"
-                peds_to_add.append({
-                    "file": acquisition.path,
-                    "PhaseEncodingDirection": "?",
-                })
+                peds_to_add.append(
+                    {
+                        "file": acquisition.path,
+                        "PhaseEncodingDirection": "?",
+                    }
+                )
 
         # Determine if an events.tsv file accompanies the bold file.
         event_str = ""
@@ -415,19 +464,28 @@ def main(args):
         if acquisition.scan_type == "func":
             if acquisition.task is not None:
                 if acquisition.TaskName == "":
-                    alt = acquisition.path.name.replace("json", "json_new")
+                    alt = acquisition.path.name.replace(
+                        "json", "json_new"
+                    )
                     if (acquisition.path.parent / alt).exists():
-                        taskname_str += f" ({red_on}TaskName in json_new{color_off})"
-                        jsonnews_to_rename.append({
-                            "good_name": acquisition.path,
-                            "good_data": acquisition.path.parent / alt,
-                        })
+                        taskname_str = " ".join([
+                            taskname_str,
+                            f"({red_on}TaskName in json_new{color_off})",
+                        ])
+                        jsonnews_to_rename.append(
+                            {
+                                "good_name": acquisition.path,
+                                "good_data": acquisition.path.parent / alt,
+                            }
+                        )
                     else:
                         taskname_str += f" ({red_on}no TaskName{color_off})"
-                        tasknames_to_add.append({
-                            "file": acquisition.path,
-                            "TaskName": acquisition.SeriesDescription,
-                        })
+                        tasknames_to_add.append(
+                            {
+                                "file": acquisition.path,
+                                "TaskName": acquisition.SeriesDescription,
+                            }
+                        )
                     num_taskname_missing += 1
 
         # Report on findings
@@ -443,15 +501,20 @@ def main(args):
             else:
                 run_str = f"{green_on}{run_str}{color_off}"
 
-            print("#{:>2d}  @{}  {} ({})  {:<4} {}{}{}{}{}".format(
-                acquisition.SeriesNumber,
-                datetime.strftime(acquisition.AcquisitionTime, '%H:%M'),
-                run_str, expectation,
-                acquisition.scan_type,
-                acquisition.path.name,
-                intfor_str, taskname_str,
-                event_str, ped_str
-            ))
+            print(
+                "#{:>2d}  @{}  {} ({})  {:<4} {}{}{}{}{}".format(
+                    acquisition.SeriesNumber,
+                    datetime.strftime(acquisition.AcquisitionTime, "%H:%M"),
+                    run_str,
+                    expectation,
+                    acquisition.scan_type,
+                    acquisition.path.name,
+                    intfor_str,
+                    taskname_str,
+                    event_str,
+                    ped_str,
+                )
+            )
         highest_run[sequence_key] = expectation
 
     # Final output, even if no verbosity
@@ -463,9 +526,9 @@ def main(args):
         if args.taskname_errors:
             print(f"{num_taskname_missing} missing TaskName fields.")
     else:
-        if args.sequence_errors and \
-           args.intended_errors and \
-           args.taskname_errors:
+        if all([
+            args.sequence_errors, args.intended_errors, args.taskname_errors,
+        ]):
             print(num_misordered, num_fieldmap_problems, num_taskname_missing)
         elif args.sequence_errors and args.intended_errors:
             print(num_misordered, num_fieldmap_problems)
@@ -483,9 +546,13 @@ def main(args):
     # Report on things to be done if fixing is requested.
     if args.fix:
         print("-" * 80)
-        total_problems = sum([
-            len(files_to_rename), len(tasknames_to_add), num_fieldmap_problems,
-        ])
+        total_problems = sum(
+            [
+                len(files_to_rename),
+                len(tasknames_to_add),
+                num_fieldmap_problems,
+            ]
+        )
         if total_problems == 0:
             print("No fixes necessary.")
         else:
@@ -505,9 +572,11 @@ def main(args):
         if len(tasknames_to_add) > 0:
             print("Inserting TaskName fixes:")
             for light_file in tasknames_to_add:
-                print(" \u2022 insert '\"Taskname\": \"{}\"'".format(
-                    light_file.get('TaskName')
-                ))
+                print(
+                    ' \u2022 insert \'"Taskname": "{}"\''.format(
+                        light_file.get("TaskName")
+                    )
+                )
                 print(f"     into {light_file.get('file')}")
             fill_in_tasknames(tasknames_to_add)
         if len(peds_to_add) > 0:
@@ -515,7 +584,7 @@ def main(args):
             print("    not actually fixing, just keeping BIDS validator quiet")
             print("    you should manually fix this field.")
             for light_file in peds_to_add:
-                print(" \u2022 insert '\"PhaseEncodingDirection\": \"?\"'")
+                print(' \u2022 insert \'"PhaseEncodingDirection": "?"\'')
                 print(f"     into {light_file.get('file')}")
             fill_in_peds(peds_to_add)
         if num_fieldmap_problems > 0:
