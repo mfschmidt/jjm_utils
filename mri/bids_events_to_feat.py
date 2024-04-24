@@ -17,47 +17,47 @@ def get_arguments():
         description=textwrap.dedent(
             """
             From a BIDS-valid events.tsv file, export txt files for feat.
-            
+
             The simplest example:
-            
+
                 bids_events_to_feat.py sub-1_ses-1_task-a_run-01_events.tsv .
-            
+
             The above command will generate separate Feat-compatible files
             for each trial_type in the events.tsv file specified. It will
             write out multiple Feat-appropriate txt files to ./
-            
+
             An example to treat different stimuli as separate event types:
-            
+
                 bids_events_to_feat.py sub-1_ses-1_task-a_run-01_events.tsv . \\
                 --split-on-stimulus question
-             
+
             The above command will treat different questions, each with
             'trial_type' == 'question' as different trial types, saving them
             to separate Feat files.
-            
+
             An example using the response in one trial as the value for another:
-            
+
                 bids_events_to_feat.py sub-1_ses-1_task-a_run-01_events.tsv . \\
                 --use-response-from "How badly do you feel?" \\
                 --use-response-to instruct
-             
+
             The above command will use the response to the question nearest the
             instruct as the value in the instruct record.
-            
+
             An example to group contiguous events as a single block:
-            
+
                 bids_events_to_feat.py sub-1_ses-1_task-a_run-01_events.tsv . \\
                 --as-block arrow
-             
+
             The above command will treat multiple repeated arrow trials as one
             large block, adding together each arrow duration into the block.
-            
+
             A ppi example:
-            
+
                 bids_events_to_feat.py sub-1_ses-1_task-a_run-01_events.tsv . \\
                 --ppi-trial-types memory --ppi-trial-types instruct \\
                 --ppi-stimuli-from instruct
-             
+
             The above will create separate ppi files for memory and instruct
             events, and for each stimulus saved with 'instruct' events. The
             events will have +1 and -1 values representing each trial_type
@@ -85,37 +85,37 @@ def get_arguments():
         "--as-block",
         nargs="*",
         help="use --as-block for each trial_type that should be aggregated "
-        "into a single block, rather than single events. This implies "
-        "the use of a dummy numeral 1 for the block.",
+             "into a single block, rather than single events. This implies "
+             "the use of a dummy numeral 1 for the block.",
     )
     parser.add_argument(
         "--trial-types",
         nargs="*",
         default=[],
         help="By default, a different file will be generated for each "
-        "trial_type in the events.tsv file. Optionally, by setting "
-        "'--trial-types a b c', only events matching trial_type "
-        "of 'a', 'b', or 'c' will be extracted.",
+             "trial_type in the events.tsv file. Optionally, by setting "
+             "'--trial-types a b c', only events matching trial_type "
+             "of 'a', 'b', or 'c' will be extracted.",
     )
     parser.add_argument(
         "--split-on-stimulus",
         nargs="*",
         default=[],
         help="By default, a different file will be generated for each "
-        "trial_type in the events.tsv file. Optionally, by setting "
-        "'--split-on-stimulus trial_type', events will also be "
-        "split between that trial_type's stimuli.",
+             "trial_type in the events.tsv file. Optionally, by setting "
+             "'--split-on-stimulus trial_type', events will also be "
+             "split between that trial_type's stimuli.",
     )
     parser.add_argument(
         "--use-response",
         action="append",
         default=[],
         help="By default '1' will be written in the third column."
-        "specify '--use-response question' to use the response "
-        "to the 'question' trial_type in the third column of "
-        "the output timing file. Be careful and review your data "
-        "because any 'nan' values will be treated as 1. This may "
-        "not be appropriate for your models.",
+             "specify '--use-response question' to use the response "
+             "to the 'question' trial_type in the third column of "
+             "the output timing file. Be careful and review your data "
+             "because any 'nan' values will be treated as 1. This may "
+             "not be appropriate for your models.",
     )
     parser.add_argument(
         "--use-response-to",
@@ -128,28 +128,28 @@ def get_arguments():
         action="append",
         default=[],
         help="If a stimulus is provided in one event, but you want to "
-        "describe that stimulus with a response to a later event, "
-        "like a question asking about the initial stimulus, you can "
-        "specify the trial_type OR stimulus for reading the response "
-        "value with --use-response-from and the location for writing "
-        "it with --use-response-to. Both arguments must be supplied "
-        "to use this feature. Because only one event can "
-        "be set at a time, this feature only writes out the file for "
-        "the event specified. For each event matching "
-        "--use-response-to, the response value from the next event "
-        "in temporal order matching --use-response-from will be used. "
-        "And the number of --use-response-to and --use-response-from "
-        "events must be the same to align values properly.",
+             "describe that stimulus with a response to a later event, "
+             "like a question asking about the initial stimulus, you can "
+             "specify the trial_type OR stimulus for reading the response "
+             "value with --use-response-from and the location for writing "
+             "it with --use-response-to. Both arguments must be supplied "
+             "to use this feature. Because only one event can "
+             "be set at a time, this feature only writes out the file for "
+             "the event specified. For each event matching "
+             "--use-response-to, the response value from the next event "
+             "in temporal order matching --use-response-from will be used. "
+             "And the number of --use-response-to and --use-response-from "
+             "events must be the same to align values properly.",
     )
     parser.add_argument(
         "--ppi-trial-types",
         nargs="*",
         help="Specify the trial_types to be included as a connected block. "
-        "for ppi analyses. For example, in a memory task with a memory "
-        "event, followed by an instruct event, you would use "
-        "`--ppi-blocks memory instruct` to cause those two events "
-        "to be treated as monolithic blocks. Combine this with "
-        "`--ppi-stimuli`.",
+             "for ppi analyses. For example, in a memory task with a memory "
+             "event, followed by an instruct event, you would use "
+             "`--ppi-blocks memory instruct` to cause those two events "
+             "to be treated as monolithic blocks. Combine this with "
+             "`--ppi-stimuli`.",
     )
     parser.add_argument(
         "--ppi-stimuli-from",
@@ -172,8 +172,8 @@ def get_arguments():
         "--long-name",
         action="store_true",
         help="By default, text files are written with short names, "
-        "but setting this to true causes text files to be written "
-        "with full bids key-value pairs for sub, ses, task, run.",
+             "but setting this to true causes text files to be written "
+             "with full bids key-value pairs for sub, ses, task, run.",
     )
     parser.add_argument(
         "-v",
@@ -285,7 +285,7 @@ def handle_errors(args, available_trial_types, available_stimuli):
     ), "Each --use-response-from must be matched to a --use-response-to."
     for trial_type in args.use_response_from + args.use_response_to:
         if (trial_type not in available_trial_types) and (
-            trial_type not in available_stimuli
+                trial_type not in available_stimuli
         ):
             print(
                 f"ERROR: '{trial_type}' specified, "
@@ -576,7 +576,7 @@ def do_feat(data, args):
 
         this_stimulus = "".join([c for c in row["stimulus"].lower() if c.isalpha()])
         if (row["trial_type"] in args.use_response_from) or (
-            this_stimulus in supplied_stimuli
+                this_stimulus in supplied_stimuli
         ):
             try:
                 val_sources.append(str(int(row["response"])))
@@ -623,9 +623,9 @@ def do_feat(data, args):
             third_value = "1"
 
         if (
-            (args.use_response_to == [] and args.trial_types == [])
-            or (row["trial_type"] in args.use_response_to)
-            or (row["trial_type"] in args.trial_types)
+                (args.use_response_to == [] and args.trial_types == [])
+                or (row["trial_type"] in args.use_response_to)
+                or (row["trial_type"] in args.trial_types)
         ):
             try:
                 splitting_stimulus = splitting_stimuli.pop(0)
@@ -671,7 +671,7 @@ def do_feat(data, args):
                         # and not store it by itself.
                         same_event = timing_tables[event_name][-1]
                         same_event["duration"] = (
-                            event["onset"] + event["duration"] - same_event["onset"]
+                                event["onset"] + event["duration"] - same_event["onset"]
                         )
                     else:
                         # This event_name exists, and is specified as a block,
@@ -775,28 +775,28 @@ def main(args):
         # Name the files as long-and-BIDSy or short
         if args.long_name:
             filename = (
-                "_".join(
-                    [
-                        f"sub-{metadata['sub']}",
-                        f"task-{metadata['task']}",
-                        f"run-{metadata['run']}",
-                        event_name,
-                        weight,
-                        descriptor,
-                    ]
-                )
-                + ".txt"
+                    "_".join(
+                        [
+                            f"sub-{metadata['sub']}",
+                            f"task-{metadata['task']}",
+                            f"run-{metadata['run']}",
+                            event_name,
+                            weight,
+                            descriptor,
+                        ]
+                    )
+                    + ".txt"
             )
         else:
             filename = (
-                "_".join(
-                    [
-                        event_name,
-                        weight,
-                        descriptor,
-                    ]
-                )
-                + ".txt"
+                    "_".join(
+                        [
+                            event_name,
+                            weight,
+                            descriptor,
+                        ]
+                    )
+                    + ".txt"
             )
 
         # We may need to avoid writing data without responses to some files.
