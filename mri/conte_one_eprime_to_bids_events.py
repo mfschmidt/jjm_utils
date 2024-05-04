@@ -149,8 +149,14 @@ def frames_to_dataframe(task, frames, verbose=False):
                 ]:
                     # This frame contains several pieces:
                     # cueSlide, stimSlide, isiSlide, itiSlide
+                    if frame['cue'] == 'INCREASE POSITIVE':
+                        cue_type = 'CuePos'
+                    elif frame['cue'] == 'LOOK':
+                        cue_type = 'CueLook'
+                    else:
+                        cue_type = 'n/a'
                     rows.append({
-                        'trial_type': frame['trialtype'],
+                        'trial_type': cue_type,
                         'onset': ms_to_sec(
                             frame.get('cueSlide.OnsetTime', '0')
                         ),
@@ -163,7 +169,7 @@ def frames_to_dataframe(task, frames, verbose=False):
                         'onset': ms_to_sec(
                             frame.get('stimSlide.OnsetTime', '0')
                         ),
-                        'duration': 0.0,
+                        'duration': 10.0,
                         'stimulus': frame['stim'],
                         'response': "n/a", 'response_time': 0.0,
                     })
@@ -232,8 +238,8 @@ def frames_to_dataframe(task, frames, verbose=False):
                         'response_time': "n/a",
                     })
                     # Subtract the delay from the onset time for this Memory Cue
-                    onset = ms_to_sec(frame['MemCue.OnsetTime'])
-                    delay = ms_to_sec(frame['MemCue.OnsetDelay'])
+                    onset = ms_to_sec(frame.get('MemCue.OnsetTime', 0))
+                    delay = ms_to_sec(frame.get('MemCue.OnsetDelay', 0))
                     base_time = onset - delay - 8.0
                     if (
                             (frame['Procedure'] not in metadata) or
@@ -321,7 +327,7 @@ def finalize_dataframe(df, offsets):
             # Center each 'onset' to its run's start time.
             df = df.rename(columns={'onset': 'original_onset'})
             df['onset'] = df['original_onset'].apply(
-                lambda onset: onset - sync_df[sync_df['t'] < onset].max()[0]
+                lambda onset: onset - sync_df[sync_df['t'] < onset].max().iloc[0]
             )
             df['run'] = df['original_onset'].apply(
                 lambda onset: sync_df.loc[
