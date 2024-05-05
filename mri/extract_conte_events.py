@@ -1214,7 +1214,7 @@ def extract_txt_timing(filename, supp_table=None, shift=0.0, run_length=0.0,
     task = "none"
     if (
             ("automem" in str(filename).lower()) or
-            ("memory" in str(filename).lower())
+            ("mem" in str(filename).lower())
     ):
         task = "mem"
     elif (
@@ -1311,7 +1311,6 @@ def find_extra_bpd_mem_table(orig_events_file):
     """
 
     fixed_file, spaced_file, data, df = None, None, None, None
-    sep = ","
     candidates = list(
         orig_events_file.parent.glob("BPD_MEMORY_fmri_*.txt")
     )
@@ -1319,19 +1318,14 @@ def find_extra_bpd_mem_table(orig_events_file):
         (orig_events_file.parent / "mem").glob("BPD_MEMORY_fmri_*.txt")
     )
     for f in candidates:
-        print(f"  supplementing with {f.name}")
-        if "fixed" in f.name:
-            fixed_file = f
-            sep = ";"
-            data = open(fixed_file, "r", errors="replace", )
-            break
-        else:
-            spaced_file = f
-            sep = " "
-            data = open(spaced_file, "r", errors="replace", )
+        if (df is None) and ("arrows" not in str(f)):
+            print(f"  supplementing with {f.name}")
+            if "fixed" in f.name:
+                df = pd.read_csv(f, sep=";", header=None)
+            else:
+                df = pd.read_csv(f, delimiter=r"\s+", header=None)
 
-    if data:
-        df = pd.read_csv(data, sep=sep, header=None)
+    if df is not None:
         df = df.rename(
             columns={
                 2: "block",
