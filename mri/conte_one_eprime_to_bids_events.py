@@ -222,7 +222,7 @@ def frames_to_dataframe(task, frames, verbose=False):
                         'onset': ms_to_sec(
                             frame.get('MemCue.OnsetTime', 0)
                         ),
-                        'duration': 0.0,
+                        'duration': 10.0,
                         'stimulus': frame['MemCue'],
                         'response': "n/a",
                         'response_time': "n/a",
@@ -232,7 +232,7 @@ def frames_to_dataframe(task, frames, verbose=False):
                         'onset': ms_to_sec(
                             frame.get('Instruct.OnsetTime', '0')
                         ),
-                        'duration': 0.0,
+                        'duration': 10.0,
                         'stimulus': frame['Word'].lower(),
                         'response': "n/a",
                         'response_time': "n/a",
@@ -311,6 +311,10 @@ def finalize_dataframe(df, offsets):
         if (i < len(df) - 1) and (df.loc[i, 'duration'] == 0.0):
             df.loc[i, 'duration'] = df.loc[i + 1, 'onset'] - df.loc[i, 'onset']
 
+    # Insert arrows directions that were not originally logged.
+
+    # Insert wait prompt at the very end.
+    
     # Format offsets nicely for splitting timing into separate fMRI BOLD runs
     sync_times = []
     if offsets:
