@@ -438,7 +438,7 @@ def main(args):
                 if b_key not in scores.keys():
                     scores[b_key] = {}
 
-            for score_file in run_dir.glob("decoding/all_trs_*_scores.tsv"):
+            for score_file in run_dir.glob("all_trs_*_scores.tsv"):
                 # See if we are interested in this particular decoder's output.
                 dec_name, dec_weighted = get_decoder_name(score_file.name)
                 if args.decoder_names is not None:
