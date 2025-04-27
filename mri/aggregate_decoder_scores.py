@@ -31,6 +31,11 @@ def get_arguments():
         help="The path to fMRIPrep data, containing subject directories"
     )
     parser.add_argument(
+        "--rawdata-path",
+        default="/data/BI/human/derivatives/new_conte/rawdata",
+        help="The path to raw BIDS data, containing subject directories"
+    )
+    parser.add_argument(
         "--steady-state-outliers", default=0, type=int,
         help="How many volumes to crop from the beginning of confounds"
     )
@@ -69,6 +74,9 @@ def get_arguments():
     if not Path(args.fmriprep_path).exists():
         print(f"fMRIPrep path '{args.fmriprep_path}' does not exist.")
         need_to_bail = True
+    if not Path(args.rawdata_path).exists():
+        print(f"Raw data path '{args.rawdata_path}' does not exist.")
+        need_to_bail = True
     if not Path(args.output_file).parent.exists():
         print(f"{str(Path(args.output_file).parent)} doesn't exist.")
         need_to_bail = True
@@ -79,6 +87,7 @@ def get_arguments():
     setattr(args, "input_dir", Path(args.input_dir).absolute())
     setattr(args, "output_file", Path(args.output_file).absolute())
     setattr(args, "fmriprep_path", Path(args.fmriprep_path).absolute())
+    setattr(args, "rawdata_path", Path(args.rawdata_path).absolute())
 
     # We are only using this on mem tasks, and we can update this if needed.
     setattr(args, "task", "mem")
@@ -147,13 +156,13 @@ def calc_fd(row):
     ])))
 
 
-def get_run_events(run_dir, args):
+def get_run_events(raw_func_dir, task, run, tr_dim, steady_state_outliers):
     """ Find the uncropped events file and return its cropped/shifted data.
     """
 
-    time_shift = args.tr_dim * args.steady_state_outliers
+    time_shift = tr_dim * steady_state_outliers
     # There should be one and only one events file per run, so assume it's so
-    for ev_file in run_dir.glob("regressors/sub-*_task-*_run-*_events.tsv"):
+    for ev_file in raw_func_dir.glob(f"sub-*_task-{task}_run-?{run}_events.tsv"):
         if ev_file.exists():
             print(f"Reading {ev_file.name}")
             df = pd.read_csv(ev_file, index_col=None, header=0, sep="\t")
@@ -243,17 +252,20 @@ def get_subject_data(subject_id, demographics):
     }
 
 
-def get_blocks_from_run(subject, run_dir, args):
+def get_blocks_from_run(subject, run_dir, raw_func_dir, args):
     """ Read blocks from one run, and organize them alongside other information.
     """
 
+    task = get_val_from_key(str(run_dir), "task")
     run = get_val_from_key(run_dir.name, "run")
-    print(f"Mining sub-{subject} run-{run} ... ", end='')
+    print(f"Mining sub-{subject} task-{task} run-{run} ... ", end='')
 
     run_blocks = {}
 
     # Get steady-state cropped events times
-    timing_data = get_run_events(run_dir, args)
+    timing_data = get_run_events(
+        raw_func_dir, task, int(run), args.tr_dim, args.steady_state_outliers
+    )
 
     # Get steady-state cropped movement confounds
     max_fd, num_fd_outliers = get_fd(subject, run, args)
@@ -383,10 +395,37 @@ def main(args):
             subject_dict = get_subject_data(
                 subject, pd.Series(dtype=str)
             )
-        for run_dir in sorted(subject_dir.glob(f"task-{args.task}/run-*")):
-            some_blocks = get_blocks_from_run(subject, run_dir, args)
+
+        # Some outputs have session directories, some don't.
+        session_subdirs = list(subject_dir.glob("ses-*"))
+        if len(session_subdirs) == 0:
+            session_id = "n/a"
+            session_dir = subject_dir
+        elif len(session_subdirs) == 1:
+            session_id = get_val_from_key(session_subdirs[0].name, "ses")
+            session_dir = session_subdirs[0]
+        else:
+            print(f"ERROR: multiple sessions for {subject_dir}")
+            session_id = get_val_from_key(session_subdirs[0].name, "ses")
+            session_dir = session_subdirs[0]
+            print(f"ERROR: using the first, {session_dir}, skipping the rest.")
+
+        for run_dir in sorted(
+            list(session_dir.glob(f"task-{args.task}/run-*")) +
+            list(session_dir.glob(f"task-{args.task}_run-*"))
+        ):
+            raw_func_dir_candidates = list(
+                (args.rawdata_path / f"sub-{subject}").glob(f"ses-*/func")
+            )
+            if len(raw_func_dir_candidates) > 0:
+                raw_func_dir = raw_func_dir_candidates[0]
+            else:
+                print(f"WARNING: no raw func dir for {subject}")
+                continue
+
+            some_blocks = get_blocks_from_run(subject, run_dir, raw_func_dir, args)
             if len(some_blocks) == 0:
-                print(f"MISSING: {str(run_dir)}")
+                print(f"MISSING: {str(raw_func_dir)}")
                 continue
             for b_key, block in some_blocks.items():
                 # Add subject demographic data to the block
