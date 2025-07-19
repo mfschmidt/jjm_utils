@@ -26,9 +26,10 @@ def get_arguments():
         help="The output file to write all results into",
     )
     parser.add_argument(
-        "--fmriprep-path",
+        "--preproc-path",
         default="/data/BI/human/derivatives/new_conte/fmriprep",
-        help="The path to fMRIPrep data, containing subject directories"
+        help="The path to fMRIPrep or feat data, containing subject "
+             "directories with pre-processing support files"
     )
     parser.add_argument(
         "--rawdata-path",
@@ -71,8 +72,8 @@ def get_arguments():
     if not Path(args.input_dir).exists():
         print(f"Input path '{args.input_dir}' does not exist.")
         need_to_bail = True
-    if not Path(args.fmriprep_path).exists():
-        print(f"fMRIPrep path '{args.fmriprep_path}' does not exist.")
+    if not Path(args.preproc_path).exists():
+        print(f"preproc path '{args.preproc_path}' does not exist.")
         need_to_bail = True
     if not Path(args.rawdata_path).exists():
         print(f"Raw data path '{args.rawdata_path}' does not exist.")
@@ -86,7 +87,7 @@ def get_arguments():
     # Save paths as Path objects rather than strings.
     setattr(args, "input_dir", Path(args.input_dir).absolute())
     setattr(args, "output_file", Path(args.output_file).absolute())
-    setattr(args, "fmriprep_path", Path(args.fmriprep_path).absolute())
+    setattr(args, "preproc_path", Path(args.preproc_path).absolute())
     setattr(args, "rawdata_path", Path(args.rawdata_path).absolute())
 
     # We are only using this on mem tasks, and we can update this if needed.
@@ -108,36 +109,59 @@ def get_val_from_key(filename, key):
     return None
 
 
-def get_fd(subject, run, args):
+def get_fd(subject, session, run, args):
     """ Find the uncropped confounds file and extract cropped FD.
     """
 
-    # We assume the confounds will be in an fMRIPrep directory,
+    # We assume the confounds will be in an fMRIPrep or feat directory,
     # but will also support the feat-based rms file if that's the only choice.
-    confound_files = list((args.fmriprep_path / f"sub-{subject}").glob(
-        f"**/sub-{subject}*task-{args.task}_run-*{run}_"
+    # If fMRIPrep was used:
+    fmriprep_glob_pattern = list(args.preproc_path.glob(
+        f"**/sub-{subject}*ses-{session}_*task-{args.task}_run-*{run}_"
         "desc-confounds_timeseries.tsv"
     ))
-    if len(confound_files) > 0:
-        df = pd.read_csv(confound_files[0],
-                         index_col=None, sep='\t')
-        fd = df['framewise_displacement'][args.steady_state_outliers:]
-        return fd.max(), len(fd[fd > args.motion_threshold])
-    else:
-        confound_files = [f for f in [
-            args.fmriprep_path / f"{subject}/mem/run{run}/preproc.feat/mc" /
-            "prefiltered_func_data_mcf_rel.rms",
-            args.fmriprep_path / f"{subject}/mems/run{run}/preproc.feat/mc" /
-            "prefiltered_func_data_mcf_rel.rms",
-        ] if f.exists()]
-        if len(confound_files) > 0:
-            df = pd.read_csv(confound_files[0], index_col=None, header=None)
-            fd = df[args.steady_state_outliers - 1:].values
-            return fd.max(), len(fd[fd > args.motion_threshold])
-        else:
-            print(f"Confounds for {subject}/task-{args.task}/run-{run} "
-                  "could not be found.")
-            return 0.0, 0
+    feat_glob_pattern_1 = list(args.preproc_path.glob(
+        f"{subject}/mem/run{run}/preproc.feat/mc/"
+        "prefiltered_func_data_mcf_rel.rms"
+    ))
+    feat_glob_pattern_2 = list(args.preproc_path.glob(
+        f"{subject}/mems/run{run}/preproc.feat/mc/"
+        "prefiltered_func_data_mcf_rel.rms"
+    ))
+    feat_glob_pattern_3 = list(args.preproc_path.glob(
+        f"sub-{subject}_ses-{session}/task-{args.task}_run-{int(run):02d}/"
+        "trial-01_lev-1.feat/mc/prefiltered_func_data_mcf_rel.rms"
+    ))
+    confound_files = (
+        fmriprep_glob_pattern + feat_glob_pattern_1 +
+        feat_glob_pattern_2 + feat_glob_pattern_3
+    )
+    if args.verbose:
+        print(f"  found {len(confound_files)} motion file possibilities:")
+    for confound_file in confound_files:
+        if confound_file.exists():
+            if confound_file.name.endswith(".tsv"):
+                # An fMRIPrep tsv file
+                try:
+                    df = pd.read_csv(
+                        confound_files[0], index_col=None, header=0, sep='\t'
+                    )
+                    fd = df['framewise_displacement'][args.steady_state_outliers:].astype(float)
+                    return fd.max(), fd.mean(), len(fd[fd > args.motion_threshold])
+                except KeyError:
+                    print(f"Could not find 'framewise_displacement' in {confound_file.name}")
+                    # continue on to the next file, no harm done
+            if confound_file.name.endswith(".rms"):
+                # An fMRIPrep tsv file
+                df = pd.read_csv(
+                    confound_files[0], index_col=None, header=None, sep='\t'
+                )
+                fd = df[args.steady_state_outliers - 1:].values.astype(float)
+                return fd.max(), fd.mean(), len(fd[fd > args.motion_threshold])
+    # If the searching all failed,
+    print(f"Confounds for {subject}/{session}/{args.task}/run-{run} "
+          "could not be found.")
+    return 0.0, 0.0, 0
 
 
 def calc_fd(row):
@@ -177,33 +201,36 @@ def get_block_metadata(data, start_time, end_time):
     """
 
     df = data[(data['onset'] > start_time) & (data['onset'] < end_time)]
-    memory = df[
-        df['trial_type'] == 'memory'
-    ]['stimulus'].iloc[0]
-    instruction = df[
-        df['trial_type'] == 'instruct'
-    ]['stimulus'].iloc[0]
-    feel_bad = df[
-        df['stimulus'] == 'How badly do you feel?'
-    ]['response'].iloc[0]
-    vividness = df[
-        df['stimulus'] == 'How vivid was the memory?'
-    ]['response'].iloc[0]
+    try:
+        memory = df[
+            df['trial_type'] == 'memory'
+        ]['stimulus'].iloc[0]
+        instruction = df[
+            df['trial_type'] == 'instruct'
+        ]['stimulus'].iloc[0]
+        feel_bad = df[
+            df['stimulus'] == 'How badly do you feel?'
+        ]['response'].iloc[0]
+        vividness = df[
+            df['stimulus'] == 'How vivid was the memory?'
+        ]['response'].iloc[0]
 
-    # Retrieve the actual timing bookends for this memory+instruct block
-    memory_onset = float(
-        df[df['trial_type'] == 'memory']['onset'].iloc[0]
-    )
-    memory_duration = float(
-        df[df['trial_type'] == 'memory']['duration'].iloc[0]
-    )
-    instruct_onset = float(
-        df[df['trial_type'] == 'instruct']['onset'].iloc[0]
-    )
-    instruct_duration = float(
-        df[df['trial_type'] == 'instruct']['duration'].iloc[0]
-    )
-    block_end = instruct_onset + instruct_duration
+        # Retrieve the actual timing bookends for this memory+instruct block
+        memory_onset = float(
+            df[df['trial_type'] == 'memory']['onset'].iloc[0]
+        )
+        memory_duration = float(
+            df[df['trial_type'] == 'memory']['duration'].iloc[0]
+        )
+        instruct_onset = float(
+            df[df['trial_type'] == 'instruct']['onset'].iloc[0]
+        )
+        instruct_duration = float(
+            df[df['trial_type'] == 'instruct']['duration'].iloc[0]
+        )
+        block_end = instruct_onset + instruct_duration
+    except IndexError:
+        return None
 
     return {
         "memory": memory,
@@ -243,22 +270,58 @@ def get_subject_data(subject_id, demographics):
 
     return {
         "subject": subject_id,
-        "age": demographics.get('age', "-1"),
-        "sex": demographics.get('sex', "-1"),
-        "suicidality": demographics.get('suicidality', "-1"),
-        "race_n": demographics.get('race_n', "-1"),
-        "race_dich": demographics.get('race_dich', "-1"),
-        "ethnicity": demographics.get('ethnicity', "-1"),
+        "other_id": demographics.get('other_id', "na"),
+        "age": demographics.get('Age', demographics.get('age', "na")),
+        "sex": demographics.get('sex', "na"),
+        "suicidality": demographics.get('suicidality', "na"),
+        "race_n": demographics.get('race_n', "na"),
+        "race_dich": demographics.get('race_dich', "na"),
+        "ethnicity": demographics.get('ethnicity', "na"),
+        "bdi_base":  demographics.get('BDI_Base', "na"),
+        "dbt1_ssri0":  demographics.get('dbt1_ssri0', "na"),
+        "bdi_6month":  demographics.get('T2_BDI_6MO', "na"),
+        "ders_base":  demographics.get('DERS_Base', "na"),
+        "ders_6month":  demographics.get('T2_DERS_6MO', "na"),
+        "zan_base":  demographics.get('ZAN_BaseTOT', "na"),
+        "zan_6month":  demographics.get('T2_ZAN_6MO', "na"),
+        "ssi_base":  demographics.get('SSICURBaseline', "na"),
+        "ssi_6month":  demographics.get('T2_SSI_6MO', "na"),
+        "als_base":  demographics.get('ALS_Base', "na"),
+        "als_6month":  demographics.get('T2_ALS_6MO', "na"),
+        "ham_base":  demographics.get('HAM17_bl', "na"),
+        "ham_6month":  demographics.get('T2_HAM17_6', "na"),
+        "bis_base":  demographics.get('BISTOTNnew_B', "na"),
+        "bis_6month":  demographics.get('T2_BISTOTNnew_6MO', "na"),
+        "busdk_base":  demographics.get('BUSDK_Base', "na"),
+        "busdk_6month":  demographics.get('T2_BUSDK_6MO', "na"),
+        "nssi_bl":  demographics.get('nssi_bl', "na"),
+        "treatment": demographics.get('treatment', "na"),
+        "baseline_DERS": demographics.get('baseline_DERS', "na"),
+        "post_DERS": demographics.get('post_DERS', "na"),
+        "baseline_HAM": demographics.get('baseline_HAM', "na"),
+        "post_HAM": demographics.get('post_HAM', "na"),
+        "baseline_BDI": demographics.get('baseline_BDI', "na"),
+        "post_BDI": demographics.get('post_BDI', "na"),
+        "baseline_SSI": demographics.get('baseline_SSI', "na"),
+        "baseline_ZANTOT": demographics.get('baseline_ZANTOT', "na"),
+        "baseline_BUSS": demographics.get('baseline_BUSS', "na"),
+        "baseline_BIS": demographics.get('baseline_BIS', "na"),
+        "attempts": demographics.get('attempts', "na"),
+        "num_sui": demographics.get('num_sui', "na"),
+        "abuse_phys": demographics.get('abuse_phys', "na"),
+        "abuse_sex": demographics.get('abuse_sex', "na"),
+        "neg_emot": demographics.get('neg_emot', "na"),
+        "neg_phys": demographics.get('neg_phys', "na"),
     }
 
 
-def get_blocks_from_run(subject, run_dir, raw_func_dir, args):
+def get_blocks_from_run(subject, session, run_dir, raw_func_dir, args):
     """ Read blocks from one run, and organize them alongside other information.
     """
 
     task = get_val_from_key(str(run_dir), "task")
     run = get_val_from_key(run_dir.name, "run")
-    print(f"Mining sub-{subject} task-{task} run-{run} ... ", end='')
+    print(f"Mining sub-{subject} ses-{session} task-{task} run-{run} ... ", end='')
 
     run_blocks = {}
 
@@ -268,9 +331,16 @@ def get_blocks_from_run(subject, run_dir, raw_func_dir, args):
     )
 
     # Get steady-state cropped movement confounds
-    max_fd, num_fd_outliers = get_fd(subject, run, args)
-    if (max_fd is not None) and (num_fd_outliers is not None) and args.verbose:
-        print(f"max FD {max_fd:0.2f} with {num_fd_outliers:0d} outlier TRs")
+    max_fd, mean_fd, num_fd_outliers = get_fd(subject, session, run, args)
+    if (
+            (max_fd is not None) and
+            (mean_fd is not None) and
+            (num_fd_outliers is not None) and
+            args.verbose
+    ):
+        print(f"FD:(sub={subject},ses={session},task={task},run={run},"
+              f"maxfd={max_fd:0.4f},meanfd={mean_fd:0.4f},"
+              f"outliertrs={num_fd_outliers:0d})")
 
     if (timing_data is None) or (max_fd is None) or (num_fd_outliers is None):
         return {}
@@ -280,10 +350,13 @@ def get_blocks_from_run(subject, run_dir, raw_func_dir, args):
     memories = memories.reset_index()
     for idx, memory in memories.iterrows():
         # Extract only timepoints in this block (ignoring other 3)
-        # the 40s gets past the memory/instruct without hitting the next block.
+        # the 52s gets past the memory/instruct without hitting the next block.
+        # This was 40 in Conte, is 52 in BPD, not sure if there's a universal.
         block_metadata = get_block_metadata(
-            timing_data, memory.onset - 0.01, memory.onset + 40.0
+            timing_data, memory.onset - 0.01, memory.onset + 52.0
         )
+        if block_metadata is None:
+            continue
         # We use a 6 TR (5.4s) shift to account for HRF (unless overridden).
         # We previously used 4 to start but just 2 at the end, based on the
         # prior matlab decoder, but it was written for 2s TRs, not
@@ -318,20 +391,21 @@ def get_blocks_from_run(subject, run_dir, raw_func_dir, args):
                 f"+ {args.hrf_shift}s) / {args.tr_dim:0.1f}))."
             )
 
-        block_id = (subject, run, idx)
+        block_id = (subject, session, run, idx)
         if block_id in run_blocks.keys():
             print(f"Duplicate block {block_id}!")
         else:
             # Store block metadata, scores coming separately
             run_blocks[block_id] = {
                 "task": args.task,
+                "session": session,
                 "run": run,
                 "period": idx,
                 "orig_start_tr": memory_idx + args.steady_state_outliers,
                 "memory_tr": memory_idx,  # Final, in ss-cropped reference
                 "instruct_tr": instruct_idx,  # Final, in ss-cropped reference
                 "end_tr": end_idx,  # Final, in ss-cropped reference
-                "max_fd": max_fd,
+                "max_fd": 0 if max_fd is None else max_fd,
                 "fd_outliers": num_fd_outliers,
             }
             run_blocks[block_id].update(block_metadata)
@@ -358,16 +432,17 @@ def get_scores_from_block(block, score_vec, dec_name, dec_weighted):
     print(
         f"  retrieved {len(block_scores.ravel())} "
         f"{dec_name} - {dec_weighted} scores - "
-        "{subject}.{run}.{period} ({instruct})".format(**block)
+        "{subject}.{session}.{run}.{period} ({instruct})".format(**block)
     )
 
     return run_scores
 
 
-def main(args):
+def main():
     """ Entry point """
 
     dt1 = datetime.now().strftime("%Y%m%d %H:%M:%S")
+    args = get_arguments()
     if args.verbose:
         print(f"Searching {str(args.input_dir)} for score results ({dt1}).")
 
@@ -382,86 +457,112 @@ def main(args):
     # Scrape data from all files, categorizing it in memory.
     blocks = {}
     scores = {}
-    for subject_dir in sorted(
-            list(args.input_dir.glob("sub-U*")) +
-            list(args.input_dir.glob("U*"))
-    ):
-        subject = get_val_from_key(subject_dir.name, "sub")
-        if subject in demographics.index:
+    subject_dirs = sorted(
+        list(args.input_dir.glob("U*")) +
+        list(args.input_dir.glob("ERBPD[0-9][0-9][0-9]")) +
+        list(args.input_dir.glob("sub-*162"))
+    )
+    if args.verbose:
+        print(f"Found {len(subject_dirs)} subject directories.")
+    for subject_dir in subject_dirs:
+        # Use sub-ID or ID as equivalent
+        if subject_dir.name.startswith("sub-"):
+            subject_id = subject_dir.name[4:]
+        else:
+            subject_id = subject_dir.name
+
+        # Find this subject in the demographics table.
+        if subject_id in demographics.index:
             subject_dict = get_subject_data(
-                subject, demographics.loc[subject]
+                subject_id, demographics.loc[subject_id]
             )
         else:
             subject_dict = get_subject_data(
-                subject, pd.Series(dtype=str)
+                subject_id, pd.Series(dtype=str)
             )
 
         # Some outputs have session directories, some don't.
-        session_subdirs = list(subject_dir.glob("ses-*"))
+        session_subdirs = sorted(
+            list(subject_dir.glob("ses*")) +
+            list(subject_dir.glob("session*"))
+        )
         if len(session_subdirs) == 0:
-            session_id = "n/a"
-            session_dir = subject_dir
-        elif len(session_subdirs) == 1:
-            session_id = get_val_from_key(session_subdirs[0].name, "ses")
-            session_dir = session_subdirs[0]
-        else:
-            print(f"ERROR: multiple sessions for {subject_dir}")
-            session_id = get_val_from_key(session_subdirs[0].name, "ses")
-            session_dir = session_subdirs[0]
-            print(f"ERROR: using the first, {session_dir}, skipping the rest.")
+            # If there are no sessions, fine, just use the subject dir
+            session_subdirs = [subject_dir, ]
 
-        for run_dir in sorted(
-            list(session_dir.glob(f"task-{args.task}/run-*")) +
-            list(session_dir.glob(f"task-{args.task}_run-*"))
-        ):
-            raw_func_dir_candidates = list(
-                (args.rawdata_path / f"sub-{subject}").glob(f"ses-*/func")
-            )
-            if len(raw_func_dir_candidates) > 0:
-                raw_func_dir = raw_func_dir_candidates[0]
+        for session_dir in session_subdirs:
+            if session_dir == subject_dir:
+                session_id = "na"
             else:
-                print(f"WARNING: no raw func dir for {subject}")
-                continue
+                session_id = get_val_from_key(session_subdirs[0].name, "ses")
+                if session_id is None:
+                    session_id = get_val_from_key(session_subdirs[0].name, "session")
 
-            some_blocks = get_blocks_from_run(subject, run_dir, raw_func_dir, args)
-            if len(some_blocks) == 0:
-                print(f"MISSING: {str(raw_func_dir)}")
-                continue
-            for b_key, block in some_blocks.items():
-                # Add subject demographic data to the block
-                block.update(subject_dict)
-                # And save it to the global block storage
-                if b_key not in blocks.keys():
-                    blocks[b_key] = block
+            run_dirs = sorted(
+                list(session_dir.glob(f"task-{args.task}/run-*")) +
+                list(session_dir.glob(f"task-{args.task}_run-*")) +
+                list(session_dir.glob(f"{args.task}s/run[0-9]"))
+            )
+            if "task" in session_dir.name:
+                run_dirs += list(session_dir.glob("run*"))
+            for run_dir in run_dirs:
+                raw_func_dir_candidates = list(
+                    (args.rawdata_path / f"sub-{subject_id}").glob(f"ses-*/func")
+                )
+                if len(raw_func_dir_candidates) > 0:
+                    raw_func_dir = raw_func_dir_candidates[0]
                 else:
-                    blocks[b_key].update(block)
-                if b_key not in scores.keys():
-                    scores[b_key] = {}
+                    print("|*")
+                    print(f"|* WARNING: no raw func dir for {subject_id}")
+                    print("|*")
+                    continue
 
-            for score_file in run_dir.glob("all_trs_*_scores.tsv"):
-                # See if we are interested in this particular decoder's output.
-                dec_name, dec_weighted = get_decoder_name(score_file.name)
-                if args.decoder_names is not None:
-                    if dec_name not in args.decoder_names:
-                        continue
-                # else go ahead and collect all decoders...
-
-                # Read the scores and start sorting them out.
-                print(f"Reading {score_file.name}")
-                score_df = pd.read_csv(score_file, index_col=None, header=None)
-                score_vec = score_df.values
+                # Using all available run information, find relevant events
+                some_blocks = get_blocks_from_run(
+                    subject_id, session_id, run_dir, raw_func_dir, args
+                )
+                if len(some_blocks) == 0:
+                    print(f"MISSING: {str(raw_func_dir)}")
+                    continue
                 for b_key, block in some_blocks.items():
-                    some_scores = get_scores_from_block(
-                        block, score_vec, dec_name, dec_weighted
-                    )
-                    for d_key in some_scores.keys():
-                        if d_key not in scores[b_key].keys():
-                            scores[b_key][d_key] = some_scores[d_key]
-                        else:
-                            for w_key in some_scores[d_key].keys():
-                                if w_key not in scores[b_key][d_key].keys():
-                                    scores[b_key][d_key][w_key] = \
-                                        some_scores[d_key][w_key]
+                    # Add subject demographic data to the block
+                    block.update(subject_dict)
+                    # And save it to the global block storage
+                    if b_key not in blocks.keys():
+                        blocks[b_key] = block
+                    else:
+                        blocks[b_key].update(block)
+                    if b_key not in scores.keys():
+                        scores[b_key] = {}
+
+                for score_file in sorted(
+                    list(run_dir.glob("all_trs_*_scores.tsv")) +
+                    list(run_dir.glob("decoding/all_trs_*_scores.tsv"))
+                ):
+                    # See if we are interested in this particular decoder's output.
+                    dec_name, dec_weighted = get_decoder_name(score_file.name)
+                    # If no --decoder-names are provided, use them all. But if some are listed,
+                    # restrict our aggregation to included decoders.
+                    if args.decoder_names is not None:
+                        if dec_name not in args.decoder_names:
+                            continue
+
+                    # Read the scores and start sorting them out.
+                    print(f"Reading {score_file.name}")
+                    score_df = pd.read_csv(score_file, index_col=None, header=None)
+                    score_vec = score_df.values
+                    for b_key, block in some_blocks.items():
+                        some_scores = get_scores_from_block(
+                            block, score_vec, dec_name, dec_weighted
+                        )
+                        for d_key in some_scores.keys():
+                            if d_key not in scores[b_key].keys():
+                                scores[b_key][d_key] = some_scores[d_key]
+                            else:
+                                for w_key in some_scores[d_key].keys():
+                                    if w_key not in scores[b_key][d_key].keys():
+                                        scores[b_key][d_key][w_key] = \
+                                            some_scores[d_key][w_key]
 
     # Now that all decoder scores are in memory, lay them out properly.
     results = []
@@ -515,7 +616,7 @@ def main(args):
     final_results = pd.DataFrame(results)
     # Create a unique identifier for each period.
     final_results["pid"] = final_results.apply(
-        lambda r: f"{r['subject']}_{r['run']}_{r['period']}_{r['instruct'][0]}",
+        lambda r: f"{r['subject']}_{r['session']}_{r['task']}_{r['run']}_{r['period']}_{r['instruct'][0]}",
         axis=1,
     )
     # Then change the period to indicate task-dependent rather than absolute
@@ -538,20 +639,31 @@ def main(args):
             final_results.loc[this_period_mask, "period"] = i + 1
 
     # Sort and order results, without changing any data
-    final_results = final_results.sort_values(
-        ["pid", "decoder", ]
-    )[[
-        'subject', 'age', 'sex', 'suicidality', 'race_n', 'race_dich',
-        'ethnicity', 'task', 'run', 'instruct', 'period', 'pid',
+    fields_to_keep = [
+        'subject', 'other_id', 'age', 'sex', 'treatment', 'suicidality',
+        'race_n', 'race_dich','ethnicity', 'dbt1_ssri0', 'bdi_base',
+        'bdi_6month', 'ders_base', 'ders_6month', 'zan_base', 'zan_6month',
+        'ssi_base', 'ssi_6month', 'als_base', 'als_6month', 'ham_base',
+        'ham_6month', 'bis_base', 'bis_6month', 'busdk_base', 'busdk_6month',
+        'nssi_bl', 'baseline_DERS', 'baseline_HAM', 'baseline_BDI',
+        'baseline_SSI', 'baseline_ZANTOT', 'baseline_BUSS', 'baseline_BIS',
+        'post_BDI', 'post_DERS', 'post_HAM', 'attempts', 'num_sui',
+        'abuse_phys', 'abuse_sex', 'neg_emot', 'neg_phys',
+        'task', 'session', 'run', 'instruct', 'period', 'pid',
         'max_fd', 'fd_outliers', 'feel_bad', 'vividness',
         'tr_from_scan_start', 'tr_from_memory', 'tr_from_instruct',
         'decoder', 'weighted_score', 'average_score',
-    ]]
+    ]
+    final_results = final_results.sort_values(
+        ["pid", "decoder", ]
+    )[[f for f in fields_to_keep if f in final_results.columns]]
     final_results.to_csv(args.output_file, index=False)
     dt2 = datetime.now().strftime("%Y%m%d %H:%M:%S")
     if args.verbose:
+        print(f"Final table contains {final_results.shape[0]} observations "
+              f"with {final_results.shape[1]} features each.")
         print(f"Wrote scores to {str(args.output_file)} ({dt2}).")
 
 
 if __name__ == "__main__":
-    main(get_arguments())
+    main()
