@@ -460,7 +460,7 @@ def main():
     subject_dirs = sorted(
         list(args.input_dir.glob("U*")) +
         list(args.input_dir.glob("ERBPD[0-9][0-9][0-9]")) +
-        list(args.input_dir.glob("sub-*162"))
+        list(args.input_dir.glob("sub-*"))
     )
     if args.verbose:
         print(f"Found {len(subject_dirs)} subject directories.")
